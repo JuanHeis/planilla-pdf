@@ -1,9 +1,11 @@
 from copy import deepcopy
 from io import BytesIO
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from field_learning import FieldLearner
@@ -180,6 +182,38 @@ class FieldLearningTests(unittest.TestCase):
             self.learner.import_bundle(stream.getvalue())
         with self.assertRaises(ValueError):
             self.learner.record_review("test", [field(x=-20)], [], PAGES)
+
+    def test_import_rejects_inconsistent_aggregates_and_keeps_legitimate_roundtrip(self):
+        from server import create_app
+
+        self.train_moves()
+        bundle = self.learner.export_bundle()
+        before = self.learner.suggest([field(x=250)], PAGES)
+        self.learner.import_bundle(bundle)
+        self.assertEqual(self.learner.suggest([field(x=250)], PAGES), before)
+        with ZipFile(BytesIO(bundle)) as archive:
+            original = json.loads(archive.read("field-learning.json"))
+        with patch.dict(os.environ, {"PUBLIC_BASE_URL": "http://127.0.0.1:8780", "APP_ENV": "test",
+                                     "PLANILLA_DATA_DIR": self.directory.name, "PLANILLA_BACKGROUND_CLEANUP": "0",
+                                     "ADMIN_TOKEN": "offline-admin"}):
+            client = create_app(mode="web", field_learner=self.learner).test_client()
+            for mode in ("mean_outside_range", "extremes_without_adjustments"):
+                forged = deepcopy(original)
+                patterns = next(iter(forged["sources"].values()))
+                stats = patterns[next(iter(patterns))]
+                if mode == "mean_outside_range":
+                    stats["sum"][0] += .01
+                else:
+                    stats["approved"], stats["adjusted"] = stats["adjusted"], 0
+                    stats["sum"] = [0.] * 4
+                stream = BytesIO()
+                with ZipFile(stream, "w", ZIP_DEFLATED) as archive:
+                    archive.writestr("field-learning.json", json.dumps(forged))
+                response = client.post("/api/admin/field-learning/import", data=stream.getvalue(),
+                                       base_url="http://127.0.0.1:8780", content_type="application/zip",
+                                       headers={"Authorization": "Bearer offline-admin"})
+                self.assertEqual(response.status_code, 400, response.json)
+                self.assertEqual(self.learner.suggest([field(x=250)], PAGES), before)
 
     def test_distinct_real_pdf_styles_transfer_without_seen_labels(self):
         import pymupdf

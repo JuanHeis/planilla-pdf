@@ -371,6 +371,10 @@ class FieldLearner:
                 for i in range(4):
                     if not -.2 <= stats["min"][i] <= stats["max"][i] <= .2 or abs(stats["sum"][i]) > .2 * stats["adjusted"] + .000001:
                         raise ValueError("La corrección excede los límites del piloto.")
+                    if not stats["adjusted"] and any(stats[name][i] != 0 for name in ("sum", "min", "max")):
+                        raise ValueError("Las estadísticas del patrón no son consistentes.")
+                    if not stats["adjusted"] * stats["min"][i] - .000001 <= stats["sum"][i] <= stats["adjusted"] * stats["max"][i] + .000001:
+                        raise ValueError("Las estadísticas del patrón no son consistentes.")
                 cleaned[origin][_json(key)] = stats
         with self._db() as db:
             own = db.execute("SELECT value FROM settings WHERE name='origin'").fetchone()[0]
