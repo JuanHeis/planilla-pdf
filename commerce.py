@@ -88,10 +88,12 @@ class Commerce:
                     pages INTEGER NOT NULL, existing_count INTEGER NOT NULL DEFAULT 0,
                     created REAL NOT NULL, expires REAL NOT NULL, prepared_sha TEXT,
                     original_mode INTEGER NOT NULL DEFAULT 0, grant_kind TEXT,
-                    granted REAL, edit_until REAL, last_order TEXT, email_sent REAL, grant_order TEXT);
+                    granted REAL, edit_until REAL, last_order TEXT, email_sent REAL, grant_order TEXT,
+                    owner_email TEXT);
                 CREATE TABLE IF NOT EXISTS email_tokens (
                     digest TEXT PRIMARY KEY, session TEXT NOT NULL, job TEXT NOT NULL,
-                    email TEXT NOT NULL, created REAL NOT NULL, verified REAL);
+                    email TEXT NOT NULL, created REAL NOT NULL, verified REAL,
+                    purpose TEXT NOT NULL DEFAULT 'verify');
                 CREATE TABLE IF NOT EXISTS orders (
                     reference TEXT PRIMARY KEY, job TEXT NOT NULL, provider_id TEXT UNIQUE,
                     checkout_url TEXT, state TEXT NOT NULL, detail TEXT, created REAL NOT NULL,
@@ -105,9 +107,15 @@ class Commerce:
                 CREATE INDEX IF NOT EXISTS tokens_by_email ON email_tokens(email, created);
                 CREATE INDEX IF NOT EXISTS events_by_date ON events(created);
             """)
-            for table, column in (("jobs", "grant_order"), ("claims", "order_reference")):
+            for table, column in (("jobs", "grant_order"), ("jobs", "owner_email"), ("claims", "order_reference")):
                 if column not in {row[1] for row in db.execute(f"PRAGMA table_info({table})")}:
                     db.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
+            if "purpose" not in {row[1] for row in db.execute("PRAGMA table_info(email_tokens)")}:
+                db.execute("ALTER TABLE email_tokens ADD COLUMN purpose TEXT NOT NULL DEFAULT 'verify'")
+            db.execute("""UPDATE jobs SET owner_email=(SELECT sessions.email FROM sessions
+                JOIN people ON people.email=sessions.email AND people.verified=1
+                WHERE sessions.id=jobs.session) WHERE owner_email IS NULL""")
+            db.execute("CREATE INDEX IF NOT EXISTS jobs_by_owner ON jobs(owner_email,created)")
 
     def _db(self):
         db = sqlite3.connect(self.database, timeout=10, factory=_Connection)
@@ -119,7 +127,7 @@ class Commerce:
         db.execute("INSERT INTO events(event,created,session,job) VALUES(?,?,?,?)", (event, self.clock(), session, job))
 
     def event(self, session, event, job=None, details=None):
-        if event not in {"page_view", "editor_open", "visit", "upload_started", "detected", "detection_failed", "preview_ready", "already_editable", "editable_detected", "prepare_failed", "download_clicked", "error"}:
+        if event not in {"page_view", "editor_open", "visit", "upload_started", "detected", "detection_failed", "preview_ready", "already_editable", "editable_detected", "prepare_failed", "download_clicked", "error", "corrected", "original_download"}:
             raise CommerceError("Evento inválido.")
         with self._db() as db:
             self._event(db, event, session, job)
@@ -138,8 +146,10 @@ class Commerce:
             return key
 
     def _job(self, db, session, job, allow_expired=False):
-        row = db.execute("SELECT * FROM jobs WHERE id=? AND session=?", (job, session)).fetchone()
-        if row is None:
+        row = db.execute("SELECT * FROM jobs WHERE id=?", (job,)).fetchone()
+        person = self._email(db, session) if row and row["session"] != session else None
+        shared = bool(person and person["verified"] and person["email"] == row["owner_email"])
+        if row is None or (row["session"] != session and not shared):
             raise CommerceError("No encontramos ese trabajo en esta sesión.", 404, "job_not_found")
         if not allow_expired and row["expires"] <= self.clock():
             raise CommerceError("Este trabajo venció. Podés volver a subir el PDF.", 410, "expired")
@@ -148,6 +158,21 @@ class Commerce:
     def authorize(self, session, job):
         with closing(self._db()) as db:
             return dict(self._job(db, session, job))
+
+    def jobs(self, session):
+        with closing(self._db()) as db:
+            person = self._email(db, session)
+            if not person or not person["verified"]:
+                return []
+            rows = db.execute("""SELECT id,created,pages FROM jobs WHERE owner_email=? AND expires>?
+                ORDER BY created DESC,id DESC LIMIT 100""", (person["email"], self.clock())).fetchall()
+        result = []
+        for row in rows:
+            status = self.status(session, row["id"])
+            result.append({"id": row["id"], "jobId": row["id"], "created": row["created"],
+                           "pages": row["pages"], **{key: status[key] for key in (
+                               "expiresAt", "prepared", "state", "grantKind", "downloadUrl", "message")}})
+        return result
 
     def register_job(self, session, job, pages, existing_count=0):
         if not isinstance(job, str) or not re.fullmatch(r"[A-Za-z0-9_-]{16,80}", job):
@@ -161,8 +186,10 @@ class Commerce:
             count = db.execute("SELECT COUNT(*) FROM jobs WHERE session=? AND created>?", (session, now - 3600)).fetchone()[0]
             if count >= 20:
                 raise CommerceError("Llegaste al límite de archivos por hora. Intentá más tarde.", 429, "upload_limit")
-            db.execute("INSERT INTO jobs(id,session,pages,existing_count,created,expires) VALUES(?,?,?,?,?,?)",
-                       (job, session, pages, existing_count, now, now + 7 * DAY))
+            person = self._email(db, session)
+            owner = person["email"] if person and person["verified"] else None
+            db.execute("INSERT INTO jobs(id,session,pages,existing_count,created,expires,owner_email) VALUES(?,?,?,?,?,?,?)",
+                       (job, session, pages, existing_count, now, now + 7 * DAY, owner))
             self._event(db, "preview_ready", session, job)
             if existing_count:
                 self._event(db, "editable_detected", session, job)
@@ -285,7 +312,7 @@ class Commerce:
         except (smtplib.SMTPException, OSError, ValueError) as error:
             raise CommerceError("No pudimos enviar el correo. Tu gratuito no se consumió. Volvé a intentar.", 503, "email_unavailable") from error
 
-    def _new_token(self, db, session, job, email):
+    def _new_token(self, db, session, job, email, purpose="verify"):
         now = self.clock()
         recent = db.execute("SELECT created FROM email_tokens WHERE email=? ORDER BY created DESC LIMIT 1", (email,)).fetchone()
         if recent and recent["created"] > now - 60:
@@ -294,8 +321,8 @@ class Commerce:
         if total >= 5:
             raise CommerceError("Llegaste al límite de correos por hora. Intentá más tarde.", 429, "email_rate_limit")
         token = secrets.token_urlsafe(32)
-        db.execute("INSERT INTO email_tokens(digest,session,job,email,created) VALUES(?,?,?,?,?)",
-                   (sha256(token.encode()).hexdigest(), session, job, email, now))
+        db.execute("INSERT INTO email_tokens(digest,session,job,email,created,purpose) VALUES(?,?,?,?,?,?)",
+                   (sha256(token.encode()).hexdigest(), session, job, email, now, purpose))
         return token
 
     def request_email(self, session, job, email):
@@ -316,27 +343,41 @@ class Commerce:
             row = db.execute("SELECT * FROM email_tokens WHERE digest=?", (sha256(token.encode()).hexdigest(),)).fetchone()
             if not row or now - row["created"] > (7 * DAY if row["verified"] else 900):
                 raise CommerceError("El enlace venció. Pedí uno nuevo para continuar.", 410, "expired_token")
-            self._job(db, row["session"], row["job"])
+            session = row["session"]
+            if row["purpose"] == "recover":
+                job = db.execute("SELECT * FROM jobs WHERE id=? AND owner_email=? AND expires>?",
+                                 (row["job"], row["email"], now)).fetchone()
+                if job is None:
+                    raise CommerceError("El enlace venció. Pedí uno nuevo para continuar.", 410, "expired_token")
+                # A recovery link proves the email, never possession of the original browser.
+                session = secrets.token_urlsafe(32)
+            else:
+                self._job(db, session, row["job"])
             db.execute("INSERT INTO people(email,verified) VALUES(?,1) ON CONFLICT(email) DO UPDATE SET verified=1", (row["email"],))
-            db.execute("UPDATE sessions SET email=?,touched=? WHERE id=?", (row["email"], now, row["session"]))
+            if row["purpose"] == "recover":
+                db.execute("INSERT INTO sessions(id,created,touched,email) VALUES(?,?,?,?)", (session, now, now, row["email"]))
+            else:
+                db.execute("UPDATE sessions SET email=?,touched=? WHERE id=?", (row["email"], now, session))
+                db.execute("UPDATE jobs SET owner_email=? WHERE session=? AND owner_email IS NULL", (row["email"], session))
             db.execute("UPDATE email_tokens SET verified=COALESCE(verified,?) WHERE digest=?", (now, row["digest"]))
             if row["verified"] is None:
-                self._event(db, "email_verified", row["session"], row["job"])
-            return {"sessionId": row["session"], "jobId": row["job"]}
+                self._event(db, "email_verified", session, row["job"])
+            return {"sessionId": session, "jobId": row["job"]}
 
     def recover(self, email):
         email = self._normalize_email(email)
         with self._db() as db:
             db.execute("BEGIN IMMEDIATE")
-            row = db.execute("""SELECT jobs.* FROM jobs JOIN sessions ON sessions.id=jobs.session
-                WHERE (sessions.email=? OR (sessions.email IS NULL AND EXISTS (
+            row = db.execute("""SELECT jobs.* FROM jobs
+                WHERE (jobs.owner_email=? OR (jobs.owner_email IS NULL AND EXISTS (
                     SELECT 1 FROM email_tokens WHERE email_tokens.session=jobs.session
                     AND email_tokens.job=jobs.id AND email_tokens.email=?)))
                 AND jobs.expires>? AND jobs.prepared_sha IS NOT NULL
                 ORDER BY jobs.created DESC LIMIT 1""", (email, email, self.clock())).fetchone()
             if row:
                 try:
-                    token = self._new_token(db, row["session"], row["id"], email)
+                    token = self._new_token(db, row["session"], row["id"], email,
+                                            purpose="recover" if row["owner_email"] else "verify")
                     self._mail(email, token)
                 except CommerceError as error:
                     if error.status != 429:
@@ -376,7 +417,8 @@ class Commerce:
                     raise CommerceError("Tu descarga gratis ya se usó en otro trabajo.", 403, "free_unavailable")
                 db.execute("UPDATE people SET free_job=? WHERE email=? AND free_job IS NULL", (job, person["email"]))
                 now = self.clock()
-                db.execute("UPDATE jobs SET grant_kind='free',granted=?,edit_until=? WHERE id=?", (now, now + DAY, job))
+                db.execute("UPDATE jobs SET grant_kind='free',granted=?,edit_until=?,expires=MAX(expires,?) WHERE id=?",
+                           (now, now + DAY, now + 7 * DAY, job))
                 self._event(db, "free_redeemed", session, job)
             elif row["grant_kind"] not in {"paid", "free"}:
                 raise CommerceError("Confirmá el pago o reclamá tu descarga gratis para continuar.", 403, "payment_required")
@@ -392,6 +434,8 @@ class Commerce:
         return headers
 
     def checkout(self, session, job):
+        if not self.webhook_secret:
+            raise CommerceError("Los pagos todavía no están habilitados. Tu trabajo está guardado.", 503, "payment_unconfigured")
         with self._db() as db:
             db.execute("BEGIN IMMEDIATE")
             row = self._job(db, session, job)
@@ -518,7 +562,8 @@ class Commerce:
             elif state == "processed" and detail == "accredited" and grant:
                 if job["grant_kind"] != "paid":
                     now = self.clock()
-                    db.execute("UPDATE jobs SET grant_kind='paid',grant_order=?,granted=?,edit_until=? WHERE id=?", (reference, now, now + DAY, job["id"]))
+                    db.execute("UPDATE jobs SET grant_kind='paid',grant_order=?,granted=?,edit_until=?,expires=MAX(expires,?) WHERE id=?",
+                               (reference, now, now + DAY, now + 7 * DAY, job["id"]))
                     self._event(db, "payment_approved", job["session"], job["id"])
             elif state == "failed" and previous != "failed":
                 self._event(db, "payment_rejected", job["session"], job["id"])
@@ -568,8 +613,8 @@ class Commerce:
 
     def claims(self):
         with closing(self._db()) as db:
-            return [dict(row) for row in db.execute("""SELECT claims.*,sessions.email,orders.provider_id
-                FROM claims JOIN jobs ON jobs.id=claims.job JOIN sessions ON sessions.id=jobs.session
+            return [dict(row) for row in db.execute("""SELECT claims.*,jobs.owner_email AS email,orders.provider_id
+                FROM claims JOIN jobs ON jobs.id=claims.job
                 LEFT JOIN orders ON orders.reference=claims.order_reference ORDER BY claims.created DESC LIMIT 200""")]
 
     def cleanup(self):

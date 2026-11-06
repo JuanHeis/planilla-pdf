@@ -138,6 +138,93 @@ class CommerceTests(unittest.TestCase):
             self.shop.prepare(self.session, long_job, b"%PDF-1.7 fixture")
         self.assertEqual(error.exception.code, "page_limit")
 
+    def test_verified_email_can_restore_jobs_across_sessions_and_quota_stays_shared(self):
+        original = self.job()
+        self.verify(original)
+        self.shop.claim_free(self.session, original)
+        self.shop.download(self.session, original)
+        self.now += 61
+        restored_session = self.shop.ensure_session(None)
+        newest = self.job(session=restored_session)
+        self.shop.request_email(restored_session, newest, "user@example.com")
+        self.assertEqual(self.shop.jobs(restored_session), [])
+        with self.assertRaises(CommerceError):
+            self.shop.authorize(restored_session, original)
+        token = re.search(r"token=([A-Za-z0-9_-]+)", self.provider.emails[-1]["text"])[1]
+        self.shop.verify(token)
+        self.assertEqual(self.shop.authorize(restored_session, original)["id"], original)
+        self.assertTrue(self.shop.download(restored_session, original).is_file())
+        self.shop.prepare(restored_session, original, b"%PDF-1.7 restored correction")
+        self.assertTrue(self.shop.status(restored_session, original)["quotaConsumed"])
+        with self.assertRaises(CommerceError) as error:
+            self.shop.claim_free(restored_session, newest)
+        self.assertEqual(error.exception.code, "free_unavailable")
+        self.assertEqual({entry["jobId"] for entry in self.shop.jobs(restored_session)}, {original, newest})
+
+    def test_job_list_contains_only_safe_metadata_and_rejects_other_email(self):
+        original = self.job()
+        self.verify(original)
+        stranger = self.shop.ensure_session(None)
+        different = self.job(session=stranger)
+        self.verify(different, "different@example.com", session=stranger)
+        self.assertEqual([entry["id"] for entry in self.shop.jobs(stranger)], [different])
+        for operation in (self.shop.authorize, self.shop.status, self.shop.download):
+            with self.assertRaises(CommerceError) as error:
+                operation(stranger, original)
+            self.assertEqual(error.exception.status, 404)
+        entries = self.shop.jobs(self.session)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(set(entries[0]), {"id", "jobId", "created", "expiresAt", "pages", "prepared",
+                                          "state", "grantKind", "downloadUrl", "message"})
+        self.now += 7 * DAY
+        self.assertEqual(self.shop.jobs(self.session), [])
+
+    def test_changing_session_email_preserves_job_owner_claim_contact_and_recovery(self):
+        original, provider_id = self.paid_order()
+        self.webhook(provider_id)
+        self.shop.claim(self.session, original, "Quedaron campos sin detectar")
+        self.now += 61
+        self.verify(original, "different@example.com")
+        different = self.job()
+        self.assertEqual(self.shop.authorize(self.session, original)["owner_email"], "user@example.com")
+        self.assertEqual(self.shop.authorize(self.session, different)["owner_email"], "different@example.com")
+        self.assertEqual([entry["id"] for entry in self.shop.jobs(self.session)], [different])
+        self.assertEqual(self.shop.claims()[0]["email"], "user@example.com")
+        self.shop.recover("user@example.com")
+        recovered = re.search(r"token=([A-Za-z0-9_-]+)", self.provider.emails[-1]["text"])[1]
+        restored = self.shop.verify(recovered)
+        self.assertEqual(restored["jobId"], original)
+        self.assertNotEqual(restored["sessionId"], self.session)
+        self.assertEqual([entry["id"] for entry in self.shop.jobs(restored["sessionId"])], [original])
+        self.assertEqual([entry["id"] for entry in self.shop.jobs(self.session)], [different])
+        with self.assertRaises(CommerceError):
+            self.shop.authorize(restored["sessionId"], different)
+        replay = self.shop.verify(recovered)
+        self.assertNotEqual(replay["sessionId"], self.session)
+        with self.assertRaises(CommerceError):
+            self.shop.authorize(replay["sessionId"], different)
+        self.assertEqual(self.shop.authorize(self.session, different)["owner_email"], "different@example.com")
+
+    def test_retention_starts_at_first_grant_and_retries_do_not_extend_it(self):
+        free_job = self.job()
+        self.verify(free_job)
+        self.now += 6 * DAY
+        self.shop.claim_free(self.session, free_job)
+        self.shop.download(self.session, free_job)
+        expires = self.shop.authorize(self.session, free_job)["expires"]
+        self.assertEqual(expires, self.now + 7 * DAY)
+        self.now += 61
+        self.shop.download(self.session, free_job)
+        self.assertEqual(self.shop.authorize(self.session, free_job)["expires"], expires)
+        paid_job, identifier = self.paid_order()
+        self.now += 6 * DAY
+        self.webhook(identifier)
+        paid_expires = self.shop.authorize(self.session, paid_job)["expires"]
+        self.assertEqual(paid_expires, self.now + 7 * DAY)
+        self.now += DAY
+        self.webhook(identifier)
+        self.assertEqual(self.shop.authorize(self.session, paid_job)["expires"], paid_expires)
+
     def test_order_price_signature_and_authoritative_data_validation(self):
         job, identifier = self.paid_order()
         sent = next(call[3] for call in self.provider.calls if call[1] == ORDER_API)
