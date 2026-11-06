@@ -37,11 +37,12 @@
   <main>
     <input id="file-input" type="file" accept=".pdf,application/pdf" hidden>
     <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+    <p id="service-availability" class="service-availability" role="note" hidden></p>
 
     <section id="welcome" class="welcome" aria-labelledby="welcome-title">
       <div class="welcome-body">
         <h1 id="welcome-title">Hacé rellenable<br>tu formulario PDF</h1>
-        <p class="intro">Subí tu formulario, revisá los campos y descargá un PDF que se pueda completar.</p>
+        <p id="welcome-intro" class="intro">Subí tu formulario, revisá los campos y descargá un PDF que se pueda completar.</p>
         <p id="service-offer" class="service-offer" hidden>Revisar es gratis. Tu primera conversión de hasta 2 páginas también. Después, ARS 2.990 por PDF de hasta 5 páginas.</p>
         <div id="drop-zone" class="drop-zone">
           <button class="button primary" id="pick-file" type="button"><svg class="icon"><use href="#i-upload"/></svg> Elegir PDF</button>

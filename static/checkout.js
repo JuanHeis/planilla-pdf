@@ -60,10 +60,10 @@ window.PlanillaCheckout = (() => {
     message(status.message || "Revisá las opciones para descargar tu PDF.",
       ["payment_rejected", "expired", "refunded"].includes(state) ? "warning" : "info");
     nodes["download-detail"].textContent = "";
-    nodes["download-email-form"].hidden = !["needs_email", "email_pending"].includes(state);
+    nodes["download-email-form"].hidden = config.emailConfigured !== true || !["needs_email", "email_pending"].includes(state);
     nodes["download-free"].hidden = state !== "free_available";
     const resumePayment = state === "payment_pending" && Boolean(status.checkoutUrl);
-    nodes["download-pay"].hidden = !["payment_required", "payment_rejected"].includes(state) && !resumePayment;
+    nodes["download-pay"].hidden = config.paymentsConfigured !== true || (!["payment_required", "payment_rejected"].includes(state) && !resumePayment);
     nodes["download-file"].hidden = !ready;
     nodes["download-retry"].hidden = !["needs_preparation", "email_pending", "payment_pending", "payment_rejected"].includes(state);
     nodes["download-price"].hidden = !["payment_required", "payment_rejected"].includes(state);
@@ -101,6 +101,15 @@ window.PlanillaCheckout = (() => {
       nodes["download-detail"].textContent = "El plazo de este trabajo terminó y sus archivos se borraron. Podés abrir el PDF otra vez. Si ya habías pagado y necesitás ayuda, escribinos con el comprobante.";
     } else if (state === "refunded") {
       nodes["download-detail"].textContent = "Mercado Pago confirmó la devolución. El plazo de acreditación depende de tu medio de pago.";
+    }
+    if (config.emailConfigured !== true && ["needs_email", "email_pending"].includes(state)) {
+      message("La confirmación por correo todavía no está habilitada. Tu gratuito no se consumió.", "warning");
+      nodes["download-detail"].textContent = "Podés volver al editor para seguir revisando y corrigiendo los campos. Por ahora no podemos enviar el enlace necesario para habilitar esta descarga.";
+    } else if (config.paymentsConfigured !== true && ["payment_required", "payment_rejected", "payment_pending"].includes(state)) {
+      message("Los pagos todavía no están habilitados. Tu trabajo está guardado.", "warning");
+      nodes["download-detail"].textContent = state === "payment_pending"
+        ? "Si ya intentaste pagar, comprobá el estado antes de volver a hacerlo. Tu trabajo conserva el mismo estado mientras esperamos la confirmación."
+        : "Podés volver al editor para seguir revisando y corrigiendo. Esta descarga necesita un pago y por ahora no podemos iniciarlo.";
     }
     if (status.claimStatus) {
       nodes["download-detail"].textContent += " Tu reclamo quedó registrado. Podés revisar su estado desde el enlace de recuperación de este trabajo.";
@@ -236,13 +245,15 @@ window.PlanillaCheckout = (() => {
     nodes["recovery-status"].textContent = explanation || "Buscando los trabajos disponibles de esta sesión…";
     nodes["recovery-jobs"].hidden = true;
     nodes["recovery-other"].hidden = true;
-    nodes["recovery-form"].hidden = false;
+    nodes["recovery-form"].hidden = config.emailConfigured !== true;
     nodes["recovery-job-list"].replaceChildren();
     if (!nodes["recovery-dialog"].open) nodes["recovery-dialog"].showModal();
     try {
       const { jobs = [] } = await request("/api/jobs");
       if (!jobs.length) {
-        nodes["recovery-status"].textContent = explanation || "Ingresá el correo que usaste para descargar o comprar.";
+        nodes["recovery-status"].textContent = config.emailConfigured === true
+          ? explanation || "Ingresá el correo que usaste para descargar o comprar."
+          : (explanation ? explanation + " " : "No hay trabajos disponibles en esta sesión. ") + "La recuperación por correo todavía no está habilitada.";
         return;
       }
       const labels = {
@@ -267,11 +278,13 @@ window.PlanillaCheckout = (() => {
         nodes["recovery-job-list"].append(item);
       }
       nodes["recovery-jobs"].hidden = false;
-      nodes["recovery-other"].hidden = false;
+      nodes["recovery-other"].hidden = config.emailConfigured !== true;
       nodes["recovery-form"].hidden = true;
       nodes["recovery-status"].textContent = explanation || "Abrí un trabajo para revisar sus campos o descargarlo. Cada uno muestra hasta cuándo sigue disponible.";
     } catch {
-      nodes["recovery-status"].textContent = explanation || "No pudimos consultar esta sesión. Podés recuperar tus trabajos con el correo que usaste.";
+      nodes["recovery-status"].textContent = config.emailConfigured === true
+        ? explanation || "No pudimos consultar esta sesión. Podés recuperar tus trabajos con el correo que usaste."
+        : "No pudimos consultar tus trabajos. Cerrá esta ventana e intentá de nuevo. La recuperación por correo todavía no está habilitada.";
     }
   }
   element("open-recovery").addEventListener("click", () => openRecovery());

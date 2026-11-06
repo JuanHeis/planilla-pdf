@@ -265,6 +265,7 @@ select, .panel-section input { color: var(--ink); background: var(--white); bord
 }
 
 .service-offer { margin-top: 14px; color: var(--accent-hover); max-width: 42ch; font-size: .88rem; }
+.service-availability { width: min(1360px, calc(100% - 56px)); margin: 18px auto 0; padding: 14px 18px; border: 1px solid #ddc59f; border-radius: 7px; color: #694616; background: #fff5e5; font-size: .94rem; }
 .footer { flex-wrap: wrap; gap: 6px 20px; }
 .footer > span { display: inline-flex; align-items: center; gap: 7px; }
 .footer .text-button, .source-link { font-size: .82rem; }
@@ -296,5 +297,6 @@ select, .panel-section input { color: var(--ink); background: var(--white); bord
 .recovery-jobs a:hover span { text-decoration: underline; }
 .recovery-jobs small { color: var(--muted); font-size: .82rem; }
 @media(max-width:680px){.download-dialog{padding:18px}.dialog-heading h2{font-size:1.2rem}.download-actions .button{width:100%}.footer{padding-inline:14px}.service-offer{max-width:100%}}
+@media(max-width:680px){.service-availability{width:calc(100% - 24px);padding:12px 14px}}
 @media(max-width:680px){.topbar{flex-wrap:wrap}.top-actions{flex:1 1 auto;justify-content:flex-end;flex-wrap:wrap}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}

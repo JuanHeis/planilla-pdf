@@ -609,6 +609,19 @@ async function initializeService() {
     const price = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 }).format(appConfig.price ?? 2990);
     byId("service-offer").textContent = "Revisar es gratis. Tu primera conversión de hasta " + (appConfig.freeMaxPages ?? 2)
       + " páginas también. Después, ARS " + price + " por PDF de hasta " + (appConfig.maxPages ?? 5) + " páginas.";
+    const availability = byId("service-availability");
+    if (appConfig.emailConfigured !== true) {
+      availability.textContent = "Podés probar la detección y corregir los campos. La confirmación por correo todavía no está habilitada para nuevas descargas. Los originales ya rellenables y las descargas que ya tenés habilitadas siguen disponibles.";
+      availability.hidden = false;
+      byId("welcome-intro").textContent = "Subí tu formulario y revisá la detección de campos. Podés corregirlos manualmente.";
+      byId("service-offer").hidden = true;
+    } else if (appConfig.paymentsConfigured !== true) {
+      availability.textContent = "Podés revisar y corregir tu PDF, y usar tu conversión gratuita si todavía la tenés disponible. Los pagos para otras conversiones todavía no están habilitados. Las descargas que ya tenés habilitadas siguen disponibles.";
+      availability.hidden = false;
+      byId("service-offer").textContent = "Revisar es gratis. La primera conversión de hasta " + (appConfig.freeMaxPages ?? 2) + " páginas también. Los pagos para otras conversiones todavía no están habilitados.";
+    } else {
+      availability.hidden = true;
+    }
     byId("local-ocr-link").hidden = true;
     byId("open-recovery").hidden = false;
     byId("processing-place").textContent = "Tus archivos se procesan de forma privada y se borran al vencer el trabajo.";
