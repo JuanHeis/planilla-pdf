@@ -6,6 +6,7 @@ const admin = Object.fromEntries([
   "refund-dialog", "refund-details", "refund-status", "refund-confirm", "refund-cancel",
 ].map((id) => [id, document.getElementById(id)]));
 let accessToken = "";
+let adminEpoch = 0;
 let loading = false;
 let pendingClaim;
 let refunding = false;
@@ -131,28 +132,36 @@ function render(metrics, claims) {
 }
 
 async function refresh() {
-  if (loading) return;
+  if (loading || !accessToken) return;
+  const epoch = adminEpoch;
+  const token = accessToken;
+  const current = () => epoch === adminEpoch && token === accessToken && Boolean(accessToken);
   loading = true;
   admin["admin-refresh"].disabled = true;
   try {
     const [metrics, claims] = await Promise.all([
       call("/api/admin/metrics"), call("/api/admin/claims"),
     ]);
+    if (!current()) return;
     render(metrics, claims);
     admin["admin-access"].hidden = true;
     admin["admin-report"].hidden = false;
     admin["admin-status"].hidden = true;
     window.dispatchEvent(new Event("planilla:admin-open"));
   } catch (error) {
-    status(error.message, true);
+    if (current()) status(error.message, true);
   } finally {
-    loading = false;
-    admin["admin-refresh"].disabled = false;
+    if (current()) {
+      loading = false;
+      admin["admin-refresh"].disabled = false;
+    }
   }
 }
 
 admin["admin-login"].addEventListener("submit", (event) => {
   event.preventDefault();
+  adminEpoch += 1;
+  loading = false;
   accessToken = admin["admin-token"].value.trim();
   admin["admin-token"].value = "";
   refresh();
@@ -188,7 +197,10 @@ admin["refund-confirm"].addEventListener("click", async () => {
   }
 });
 admin["admin-logout"].addEventListener("click", () => {
+  adminEpoch += 1;
   accessToken = "";
+  loading = false;
+  admin["admin-refresh"].disabled = false;
   window.dispatchEvent(new Event("planilla:admin-close"));
   admin["admin-access"].hidden = false;
   admin["admin-report"].hidden = true;
