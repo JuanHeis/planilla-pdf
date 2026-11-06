@@ -1,0 +1,14 @@
+Planilla
+
+El código propio de Planilla se ofrece bajo la GNU Affero General Public License, versión 3 o posterior. El texto completo se encuentra en LICENSE. Quien publique una versión alojada debe ofrecer el código fuente correspondiente a esa versión a las personas que interactúen con el programa y conservar los avisos aplicables.
+
+Componentes de terceros
+
+- PyMuPDF y MuPDF. El proyecto utiliza la distribución bajo AGPL. Se conservan sus licencias y avisos distribuidos con la dependencia. Información de licencia en https://pymupdf.io/licensing
+- Tesseract OCR y el modelo español tessdata_fast. Los datos incluidos en tessdata/spa.traineddata se distribuyen sin modificación bajo Apache License 2.0. Su licencia, origen y SHA-256 se encuentran en tessdata/LICENSE.txt y tessdata/SOURCE.txt.
+- Flask y sus dependencias conservan sus respectivas licencias distribuidas con los paquetes.
+- Gunicorn conserva su licencia MIT distribuida con el paquete.
+
+Los avisos anteriores acompañan las licencias completas de las dependencias. Los archivos de usuarios, credenciales y bases de datos de operación pertenecen a los datos privados del servicio y se excluyen de la entrega del código fuente.
+
+El responsable de una publicación debe configurar SOURCE_URL con un enlace permanente al código correspondiente a la versión desplegada y mantener disponible esa revisión, los archivos de construcción y este aviso.
