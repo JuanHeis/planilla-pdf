@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Planilla · Revisión de OCR</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/ocr.css">
+  <script src="/static/ocr.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand ocr-brand" href="/">
+      <span class="brand-icon">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h7l4 4v13H6v-16a1 1 0 0 1 1-1ZM14 3.5v4h4M9 12h6m-6 4h4"/></svg>
+      </span>
+      <span>Planilla<span class="brand-caption">Revisión de OCR</span></span>
+    </a>
+    <a class="text-button" href="/">Volver al editor PDF</a>
+  </header>
+  <main class="ocr-main">
+    <header class="ocr-heading">
+      <div>
+        <h1>Revisá el texto de un escaneo</h1>
+        <p>Compará el texto que leyó Tesseract con el PDF y guardá las correcciones que confirmes.</p>
+      </div>
+      <button class="button primary" id="open-pdf" type="button">Abrir PDF</button>
+      <input type="file" id="pdf-file" accept=".pdf,application/pdf" hidden>
+    </header>
+    <div class="notice" id="ocr-notice" role="status" aria-live="polite" hidden></div>
+    <section class="ocr-empty" id="ocr-empty" aria-labelledby="ocr-empty-title">
+      <h2 id="ocr-empty-title">Empezá con un formulario escaneado</h2>
+      <p>Podés seleccionar una palabra sobre la página para encontrarla en la lista. Si toda la lectura coincide con el PDF, confirmá la página sin cambios.</p>
+    </section>
+    <section class="ocr-session" id="ocr-session" aria-labelledby="ocr-document" hidden>
+      <header class="ocr-session-header">
+        <div class="ocr-document-title">
+          <h2 id="ocr-document" tabindex="-1"></h2>
+          <p id="review-progress"></p>
+        </div>
+        <div class="ocr-pagination" role="group" aria-label="Navegación de páginas">
+          <button class="button secondary icon-button" id="ocr-prev" type="button" aria-label="Página anterior">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>
+          </button>
+          <label class="visually-hidden" for="ocr-page">Ir a la página</label>
+          <select id="ocr-page"></select>
+          <button class="button secondary icon-button" id="ocr-next" type="button" aria-label="Página siguiente">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+          </button>
+        </div>
+      </header>
+      <div class="ocr-workspace">
+        <section class="ocr-preview" aria-labelledby="preview-title">
+          <h3 id="preview-title">Página original</h3>
+          <div class="ocr-paper" id="ocr-paper">
+            <div class="ocr-overlay" id="ocr-overlay"></div>
+          </div>
+          <p id="image-error" hidden>No se pudo mostrar la imagen de esta página.</p>
+        </section>
+        <section class="ocr-review" aria-labelledby="review-title">
+          <div class="ocr-review-heading">
+            <div>
+              <h3 id="review-title">Texto reconocido</h3>
+              <p id="ocr-page-status"></p>
+            </div>
+            <label class="ocr-filter" id="filter-label" hidden>
+              <input type="checkbox" id="filter-suggestions">
+              Mostrar sugerencias y ediciones
+            </label>
+          </div>
+          <div class="ocr-review-body" id="ocr-review-body">
+            <p id="ocr-words-message" class="ocr-words-message" hidden></p>
+            <button type="button" class="button secondary" id="retry-page" hidden>Reintentar lectura</button>
+            <table class="ocr-table" id="ocr-table" hidden>
+              <thead><tr><th scope="col">Lectura original</th><th scope="col">Sugerencia</th><th scope="col">Corrección</th></tr></thead>
+              <tbody id="ocr-rows"></tbody>
+            </table>
+          </div>
+          <div class="ocr-save">
+            <span id="ocr-draft-status" aria-live="polite"></span>
+            <button class="button primary" id="save-page" type="button" disabled>Confirmar página sin cambios</button>
+          </div>
+        </section>
+      </div>
+    </section>
+    <section class="ocr-learning" aria-labelledby="learning-title">
+      <div>
+        <h2 id="learning-title">Compartí el aprendizaje</h2>
+        <p id="learning-summary">Consultando lo que se guardó en este equipo…</p>
+        <p>El ZIP contiene el texto reconocido y el texto confirmado. El PDF queda en tu equipo. Compartí el ZIP con alguien autorizado si las páginas incluyen datos personales.</p>
+      </div>
+      <div class="ocr-learning-actions">
+        <button class="button secondary" type="button" id="import-learning">Importar ZIP</button>
+        <button class="button secondary" type="button" id="export-learning">Descargar aprendizaje</button>
+        <input type="file" id="learning-file" accept=".zip,application/zip" hidden>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

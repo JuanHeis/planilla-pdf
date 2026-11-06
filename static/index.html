@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Planilla · Editor de formularios PDF</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <svg class="symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-mark" viewBox="0 0 24 24"><path d="M7 3.5h7l4 4v13H6v-16a1 1 0 0 1 1-1Z"/><path d="M14 3.5v4h4M9 12h6m-6 4h4"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4m-5 5 5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v12m-5-5 5 5 5-5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-text" viewBox="0 0 24 24"><path d="M4 6V4h16v2m-8-2v16m-4 0h8"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="m8 12 3 3 5-6"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16m-10 0V4h4v3M7 7l1 13h8l1-13m-7 4v5m4-5v5"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 1 1 8 0v3m-4 4v2"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5m0-8v.1"/></symbol>
+  </svg>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-icon"><svg class="icon"><use href="#i-mark"/></svg></span>
+      <span>Planilla<span class="brand-caption">Editor PDF</span></span>
+    </div>
+    <div id="editor-actions" class="top-actions" hidden>
+      <button class="button secondary" id="change-file" type="button">Cambiar PDF</button>
+      <button class="button primary" id="export" type="button"><svg class="icon"><use href="#i-download"/></svg><span>Descargar PDF</span></button>
+    </div>
+  </header>
+  <main>
+    <input id="file-input" type="file" accept=".pdf,application/pdf" hidden>
+    <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+
+    <section id="welcome" class="welcome" aria-labelledby="welcome-title">
+      <div class="welcome-body">
+        <h1 id="welcome-title">Hacé rellenable<br>tu formulario PDF</h1>
+        <p class="intro">Subí un formulario, revisá los campos sugeridos y descargá un PDF que se pueda completar.</p>
+        <div id="drop-zone" class="drop-zone">
+          <button class="button primary" id="pick-file" type="button"><svg class="icon"><use href="#i-upload"/></svg> Elegir PDF</button>
+          <span>También podés arrastrarlo acá</span>
+        </div>
+        <button class="text-button" id="demo" type="button">Probar con un ejemplo <svg class="icon"><use href="#i-right"/></svg></button>
+        <p><a class="text-button" href="/static/ocr.html">Revisar y corregir el OCR <svg class="icon" aria-hidden="true"><use href="#i-right"/></svg></a></p>
+      </div>
+      <figure class="example">
+        <div class="illustration" aria-hidden="true">
+          <div class="sample-paper">
+            <div class="sample-org"><span class="sample-emblem"><svg class="icon"><use href="#i-mark"/></svg></span><span>DOCUMENTO DE MUESTRA</span></div>
+            <div class="sample-heading">Solicitud de inscripción</div>
+            <div class="sample-description">Completá los datos de la persona solicitante.</div>
+            <div class="sample-section">Datos personales</div>
+            <div class="sample-label">Nombre y apellido</div>
+            <div class="sample-field is-selected"><span></span></div>
+            <div class="sample-row">
+              <div><div class="sample-label">Documento</div><div class="sample-field"></div></div>
+              <div><div class="sample-label">Fecha</div><div class="sample-field"></div></div>
+            </div>
+            <div class="sample-label">Correo electrónico</div>
+            <div class="sample-field"></div>
+            <div class="sample-check"><span></span> Acepto que me contacten por correo</div>
+          </div>
+        </div>
+        <figcaption><span class="example-dot"></span> Los campos editables se resaltan sobre la página.</figcaption>
+      </figure>
+    </section>
+
+    <section id="editor" class="editor" aria-label="Editar campos del PDF" hidden>
+      <div class="editor-heading">
+        <div class="document-title">
+          <span class="document-icon"><svg class="icon"><use href="#i-mark"/></svg></span>
+          <div><h1 id="filename" tabindex="-1"></h1><p id="document-summary"></p></div>
+        </div>
+        <nav class="pagination" aria-label="Páginas del PDF">
+          <button class="button icon-button secondary" id="prev" type="button" aria-label="Página anterior"><svg class="icon"><use href="#i-prev"/></svg></button>
+          <label for="page-picker" class="visually-hidden">Ir a la página</label>
+          <select id="page-picker"></select>
+          <button class="button icon-button secondary" id="next" type="button" aria-label="Página siguiente"><svg class="icon"><use href="#i-next"/></svg></button>
+        </nav>
+      </div>
+      <div class="workspace">
+        <div class="panel-section add-section">
+          <h2>Agregar campo</h2>
+          <div class="field-types" role="group" aria-label="Tipo de campo">
+            <button class="button secondary" data-add="text" type="button" aria-pressed="false"><svg class="icon"><use href="#i-text"/></svg> Texto</button>
+            <button class="button secondary" data-add="checkbox" type="button" aria-pressed="false"><svg class="icon"><use href="#i-check"/></svg> Casilla</button>
+          </div>
+        </div>
+        <div class="preview">
+          <p id="placement-hint" class="placement-hint" role="status" hidden></p>
+          <div class="preview-sheet" id="sheet">
+            <div id="overlay" class="overlay" role="group"></div>
+          </div>
+          <p id="preview-error" class="preview-error" role="alert" hidden>No se pudo mostrar esta página. Podés cambiar de página o volver a cargar el archivo.</p>
+        </div>
+        <aside class="field-panel" aria-label="Controles de campos">
+          <div class="panel-section">
+            <div class="section-title"><h2>Campos nuevos de esta página</h2><span id="page-count" class="count"></span></div>
+            <div id="field-list" class="field-list"></div>
+            <button id="toggle-existing" class="existing-toggle" type="button" aria-pressed="true" hidden>
+              <span class="existing-swatch" aria-hidden="true"></span><span id="existing-count"></span>
+            </button>
+          </div>
+          <div id="field-details" class="panel-section" hidden>
+            <h2>Campo seleccionado</h2>
+            <label for="field-name">Nombre</label>
+            <input id="field-name" type="text" maxlength="100" autocomplete="off">
+            <div class="position-inputs">
+              <label for="field-x">Desde la izquierda<input id="field-x" data-metric="x" type="number" min="0" step="any"></label>
+              <label for="field-y">Desde arriba<input id="field-y" data-metric="y" type="number" min="0" step="any"></label>
+              <label for="field-width">Ancho<input id="field-width" data-metric="width" type="number" min="4" step="any"></label>
+              <label for="field-height">Alto<input id="field-height" data-metric="height" type="number" min="4" step="any"></label>
+            </div>
+            <button class="text-button remove-button" id="delete-field" type="button"><svg class="icon"><use href="#i-trash"/></svg> Quitar campo</button>
+          </div>
+          <p class="field-tip"><svg class="icon"><use href="#i-info"/></svg><span>Arrastrá un campo nuevo para moverlo. También podés seleccionarlo y usar las flechas. Con Mayús se mueve más rápido.</span></p>
+        </aside>
+      </div>
+    </section>
+  </main>
+  <footer class="footer"><svg class="icon"><use href="#i-lock"/></svg> Tus archivos se procesan en esta computadora.</footer>
+</body>
+</html>
