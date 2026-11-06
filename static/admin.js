@@ -142,6 +142,7 @@ async function refresh() {
     admin["admin-access"].hidden = true;
     admin["admin-report"].hidden = false;
     admin["admin-status"].hidden = true;
+    window.dispatchEvent(new Event("planilla:admin-open"));
   } catch (error) {
     status(error.message, true);
   } finally {
@@ -188,6 +189,7 @@ admin["refund-confirm"].addEventListener("click", async () => {
 });
 admin["admin-logout"].addEventListener("click", () => {
   accessToken = "";
+  window.dispatchEvent(new Event("planilla:admin-close"));
   admin["admin-access"].hidden = false;
   admin["admin-report"].hidden = true;
   admin["admin-summary"].replaceChildren();

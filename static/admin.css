@@ -21,4 +21,15 @@ table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{text-align:left
 .claim-row{border-block-start:1px solid var(--line);padding:18px 0}
 .claim-row h3{font-size:1rem;margin:0 0 6px}.claim-row p{margin:5px 0;color:var(--muted);overflow-wrap:anywhere}.claim-row .claim-reason{color:var(--ink);max-width:75ch;white-space:pre-wrap}
 .claim-row small{color:var(--muted)}.claim-row .button{margin-top:10px}
+.admin-extra{border-block-start:1px solid var(--line);margin-top:30px;padding-top:2px}
+.admin-period-form,.admin-actual-form,.admin-import-form{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin:16px 0 10px}
+.admin-period-form label,.admin-actual-form label,.admin-import-form label{display:grid;gap:7px;font-size:.9rem;font-weight:600;min-width:0}
+.admin-extra input{border:1px solid #9cb2ad;border-radius:6px;min-height:43px;padding:9px 11px;background:var(--white);color:var(--ink);font:inherit;width:100%;max-width:100%}
+.admin-period-form label{width:220px}.admin-actual-form label{width:min(370px,100%)}.admin-import-form label{width:min(430px,100%)}
+.admin-extra input[type=file]{font-size:.9rem;padding:8px;overflow:hidden}.admin-extra input[type=file]::file-selector-button{border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--ink);padding:5px 8px;margin-right:8px}
+.admin-learning-actions{display:flex;flex-wrap:wrap;gap:10px;margin:16px 0}
+.learning-mode{font-weight:600;margin:15px 0 12px}.admin-confirm{padding:16px;background:var(--accent-tint);border:1px solid #9dc3b7;border-radius:8px;margin:16px 0}.admin-confirm p{margin:0 0 13px;max-width:70ch}
+.admin-details{margin:20px 0}.admin-details summary{cursor:pointer;font-weight:600;line-height:1.5}.admin-details[open] summary{margin-bottom:12px}.admin-details .admin-table-wrap{margin-top:12px}
+.admin-extra .admin-status{margin:14px 0}.admin-extra .admin-table-wrap td{overflow-wrap:anywhere}.admin-extra .admin-table-wrap td:last-child{white-space:nowrap}
+@media(max-width:600px){.admin-extra input{font-size:1rem}.admin-period-form,.admin-actual-form,.admin-import-form{align-items:stretch;flex-direction:column}.admin-period-form label,.admin-actual-form label,.admin-import-form label{width:100%}.admin-period-form .button,.admin-actual-form .button,.admin-import-form .button{align-self:flex-start}.admin-learning-actions{align-items:flex-start;flex-direction:column}.admin-confirm .admin-buttons{align-items:stretch;flex-direction:column;gap:10px}}
 @media(max-width:600px){.admin-main{margin-top:24px}.admin-main h1{font-size:1.55rem}.admin-summary{grid-template-columns:1fr}.admin-summary div+div{border-top:1px solid var(--line)}.admin-summary div{padding:12px 0}.admin-summary dd{font-size:1.3rem}}

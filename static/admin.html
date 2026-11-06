@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/static/styles.css">
   <link rel="stylesheet" href="/static/admin.css">
   <script src="/static/admin.js" defer></script>
+  <script src="/static/adminextras.js" defer></script>
 </head>
 <body>
   <header class="topbar"><a class="admin-brand" href="/">Planilla</a><span>Actividad del servicio</span></header>
@@ -30,6 +31,50 @@
       <div class="admin-table-wrap"><table><thead><tr><th scope="col">Paso</th><th scope="col">Cantidad</th></tr></thead><tbody id="admin-funnel"></tbody></table></div>
       <h2>Actividad por día</h2>
       <div class="admin-table-wrap"><table><thead><tr><th scope="col">Día</th><th scope="col">Análisis</th><th scope="col">Gratis habilitados</th><th scope="col">Pagos aprobados</th></tr></thead><tbody id="admin-daily"></tbody></table></div>
+      <section class="admin-extra" aria-labelledby="usage-title">
+        <h2 id="usage-title">Cuánto cuesta procesar los PDF</h2>
+        <p class="admin-intro">Las ventas anteriores están en pesos argentinos. Estos costos están en <strong>dólares estadounidenses (USD)</strong>. El costo medio completo se calcula al cargar el gasto real del mes.</p>
+        <form id="usage-period-form" class="admin-period-form">
+          <label for="usage-month">Mes calendario UTC<input id="usage-month" type="month" required></label>
+          <button class="button secondary" type="submit">Ver mes</button>
+        </form>
+        <p id="usage-status" class="admin-status" role="status" aria-live="polite">Las mediciones se consultan al abrir la actividad.</p>
+        <div id="usage-data" hidden>
+          <p id="usage-period-note" class="admin-hint"></p>
+          <div class="admin-table-wrap"><table><thead><tr><th scope="col">Medida del mes</th><th scope="col">Valor</th></tr></thead><tbody id="usage-summary"></tbody></table></div>
+          <form id="usage-actual-form" class="admin-actual-form">
+            <label for="usage-actual">Gasto real de infraestructura del mes en USD<input id="usage-actual" type="number" min="0" max="1000000" step="0.01" inputmode="decimal" placeholder="Ej. 5,00" required aria-describedby="usage-actual-help"></label>
+            <button class="button secondary" type="submit">Guardar gasto del mes</button>
+          </form>
+          <p id="usage-actual-help" class="admin-hint">Ingresá el gasto del período comparable de tu factura. Se divide por los PDF distintos con actividad medida, incluidos los gratuitos. Los reintentos no cuentan como otro PDF. Si tu factura tiene un ciclo diferente, asigná el importe al mes comparable.</p>
+          <p class="admin-hint">Hobby incluye los primeros USD 5 de consumo en su mínimo mensual. El escenario de USD 5 repartidos no agrega otros USD 5 ni predice un posible excedente.</p>
+          <details class="admin-details"><summary>Ver tiempos, reintentos y alcance de la estimación</summary>
+            <p id="usage-detail" class="admin-intro"></p>
+            <div class="admin-table-wrap"><table><thead><tr><th scope="col">Operación</th><th scope="col">Intentos</th><th scope="col">Fallidos</th><th scope="col">CPU en segundos</th><th scope="col">Tiempo transcurrido en segundos</th></tr></thead><tbody id="usage-operations"></tbody></table></div>
+            <p id="usage-limitations" class="admin-hint"></p>
+          </details>
+        </div>
+      </section>
+      <section class="admin-extra" aria-labelledby="learning-title">
+        <h2 id="learning-title">Aprendizaje de patrones de campos</h2>
+        <p class="admin-intro">Este piloto usa revisiones confirmadas para aprender patrones de ubicación y tamaño. No guarda el texto ni el PDF para entrenar. Medir revisiones no demuestra por sí solo una mejora del 80 o 90 %.</p>
+        <p id="learning-status" class="admin-status" role="status" aria-live="polite">El aprendizaje se consulta al abrir la actividad.</p>
+        <div id="learning-data" hidden>
+          <p id="learning-mode" class="learning-mode"></p>
+          <div class="admin-table-wrap"><table><thead><tr><th scope="col">Evidencia disponible</th><th scope="col">Cantidad</th></tr></thead><tbody id="learning-summary"></tbody></table></div>
+          <p id="learning-guidance" class="admin-hint"></p>
+          <div class="admin-learning-actions"><button id="learning-toggle" class="button secondary" type="button">Activar ajustes automáticos</button><button id="learning-export" class="button secondary" type="button">Descargar aprendizaje</button></div>
+          <div id="learning-confirm" class="admin-confirm" hidden>
+            <p id="learning-confirm-text"></p>
+            <div class="admin-buttons"><button id="learning-confirm-apply" class="button primary" type="button">Confirmar cambio</button><button id="learning-confirm-cancel" class="button secondary" type="button">Volver sin cambiar</button></div>
+          </div>
+          <form id="learning-import-form" class="admin-import-form">
+            <label for="learning-import">Incorporar aprendizaje de otra instalación<input id="learning-import" type="file" accept=".zip,application/zip" aria-describedby="learning-import-help" required></label>
+            <button class="button secondary" type="submit">Importar aprendizaje</button>
+          </form>
+          <p id="learning-import-help" class="admin-hint">ZIP de Planilla, hasta 2 MB. Se incorporan estadísticas de patrones. Si los ajustes automáticos están activos, los patrones elegibles podrán afectar documentos nuevos. Revisá la procedencia del archivo antes de importarlo.</p>
+        </div>
+      </section>
       <section class="admin-claims" aria-labelledby="claims-title"><h2 id="claims-title">Reclamos</h2><p class="admin-intro">Revisá el motivo y la orden antes de solicitar una devolución. Mercado Pago puede demorar la acreditación según el medio de pago.</p><div id="admin-claims"></div></section>
     </section>
   </main>
