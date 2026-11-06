@@ -29,6 +29,12 @@ window.PlanillaCheckout = (() => {
   const testMail = () => testMode() && config.testEmailEnabled === true;
   const emailReady = () => config.emailConfigured === true || testMail();
   const freeDownloadedDetail = "Podés volver a descargar este mismo PDF mientras siga disponible. Esta descarga no consume otra conversión. Abrí la copia descargada para completar los campos.";
+  const stateTitles = {
+    payment_pending: "Pago pendiente",
+    payment_rejected: "Pago no aprobado",
+    expired: "Este trabajo venció",
+    refunded: "Devolución confirmada",
+  };
 
   async function request(url, data) {
     const response = await fetch(url, data === undefined ? undefined : {
@@ -61,7 +67,7 @@ window.PlanillaCheckout = (() => {
     current = status;
     const state = status.state;
     const ready = ["download_ready", "payment_approved"].includes(state);
-    nodes["download-title"].textContent = ready ? "Tu PDF está listo para descargar" : "Último paso para descargar";
+    nodes["download-title"].textContent = ready ? "Tu PDF está listo para descargar" : stateTitles[state] || "Último paso para descargar";
     message(status.message || "Revisá las opciones para descargar tu PDF.",
       ["payment_rejected", "expired", "refunded"].includes(state) ? "warning" : "info");
     nodes["download-detail"].textContent = "";
