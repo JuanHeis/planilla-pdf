@@ -23,7 +23,9 @@ import pymupdf
 
 import ocr_review
 import ocr_review_store
-from pdf_engine import detect_pdf, export_pdf, render_page
+from pdf_engine import detect_pdf, export_pdf, render_page, _export_fields
+from usage_meter import UsageMeter
+from field_learning import FieldLearner, MAX_BUNDLE
 
 ROOT = Path(__file__).resolve().parent
 MAX_PDF = 20 * 1024 * 1024
@@ -65,7 +67,7 @@ def read_json():
     return value
 
 
-def create_app(*, mode=None, commerce_service=None):
+def create_app(*, mode=None, commerce_service=None, usage_meter=None, field_learner=None):
     app = Flask(__name__, static_folder=str(ROOT / "static"))
     app.config["MAX_CONTENT_LENGTH"] = MAX_PDF
     chosen_mode = mode or os.environ.get("PLANILLA_MODE", "local")
@@ -80,11 +82,15 @@ def create_app(*, mode=None, commerce_service=None):
     if web and os.environ.get("APP_ENV", "").lower() == "production" and parsed.scheme != "https":
         raise RuntimeError("La versión pública requiere una PUBLIC_BASE_URL con HTTPS.")
     data_dir = Path(os.environ.get("PLANILLA_DATA_DIR", ROOT / "data"))
+    meter = usage_meter or UsageMeter(data_dir)
+    learner = field_learner or FieldLearner(data_dir)
     shop = commerce_service
     if web and shop is None:
         from commerce import Commerce
         shop = Commerce(data_dir=data_dir)
     app.extensions["commerce"] = shop
+    app.extensions["usage_meter"] = meter
+    app.extensions["field_learner"] = learner
     cookie_name = "planilla_session"
     uploads = {}
     last_cleanup = [0.0]
@@ -97,6 +103,39 @@ def create_app(*, mode=None, commerce_service=None):
     def emit(event, job=None):
         if web and hasattr(shop, "event"):
             shop.event(g.sid, event, job=job)
+
+    def measured(operation):
+        def decorate(fn):
+            @wraps(fn)
+            def wrapped(*args, **kwargs):
+                with meter.measure(operation, session=getattr(g, "sid", None),
+                                   input_bytes=request.content_length or 0) as sample:
+                    g.usage_sample = sample
+                    response = app.make_response(fn(*args, **kwargs))
+                    sample.success = response.status_code < 400
+                    sample.output_bytes = response.content_length or response.calculate_content_length() or 0
+                    return response
+            return wrapped
+        return decorate
+
+    def measure_document(job, pages=0, fields=0):
+        sample = getattr(g, "usage_sample", None)
+        if sample:
+            sample.job, sample.pages, sample.fields = job, pages, fields
+
+    learning_settings = data_dir / "field-learning-settings.json"
+
+    def auto_learning():
+        if learning_settings.is_file():
+            try:
+                settings = json.loads(learning_settings.read_text(encoding="utf-8"))
+                return isinstance(settings, dict) and settings.get("autoApply") is True
+            except (ValueError, OSError):
+                return False
+        return not web
+
+    def learning_status():
+        return {"autoApply": auto_learning(), "stats": learner.stats()}
 
     def job_dir(job):
         if not isinstance(job, str) or not re.fullmatch(r"[0-9a-f]{32}", job):
@@ -112,8 +151,12 @@ def create_app(*, mode=None, commerce_service=None):
         temporary.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
         temporary.replace(target)
 
+    def document_metadata(job, cache):
+        return json.loads(metadata_path(job).read_text(encoding="utf-8")) if web else cache.get("metadata", {})
+
     def prepare_hosted(job, data, fields):
         meta = json.loads(metadata_path(job).read_text(encoding="utf-8"))
+        measure_document(job, len(meta["pages"]), len(fields))
         fingerprint = sha256(json.dumps(fields, sort_keys=True, ensure_ascii=False,
                                         separators=(",", ":"), allow_nan=False).encode()).hexdigest()
         final = job_dir(job) / "final.pdf"
@@ -265,6 +308,7 @@ def create_app(*, mode=None, commerce_service=None):
 
     @app.post("/api/detect")
     @app.post("/api/ocr")
+    @measured("detect")
     def detect():
         if request.path == "/api/ocr":
             local_only()
@@ -297,13 +341,28 @@ def create_app(*, mode=None, commerce_service=None):
         if web and len(result["pages"]) > 5:
             raise ValueError("Por ahora convertimos PDFs de hasta 5 páginas. No se consumió tu gratuito.")
         key = secrets.token_hex(16)
+        measure_document(key, len(result["pages"]), len(result.get("fields", [])))
+        baseline = result.get("fields", [])
+        learning = {"mode": "observation", "changes": [], "modelVersion": None}
+        if request.path == "/api/detect":
+            try:
+                suggested = learner.suggest(baseline, result["pages"], auto_apply=auto_learning(),
+                                            existing_fields=result.get("existingFields", []))
+                with pymupdf.open(stream=data, filetype="pdf") as document:
+                    list(_export_fields(document, suggested["fields"]))
+                result = {**result, "fields": suggested["fields"]}
+                learning = {k: suggested[k] for k in ("mode", "changes", "modelVersion")}
+            except Exception as error:
+                app.logger.warning("Field suggestions unavailable (%s)", type(error).__name__)
+        result = {**result, "learning": learning}
+        meta = {**result, "documentId": key, "baselineFields": baseline}
         if web:
             folder = job_dir(key)
             folder.mkdir(parents=True, exist_ok=False)
             (folder / "original.pdf").write_bytes(data)
             initial_digest = sha256(json.dumps(result["fields"], sort_keys=True, ensure_ascii=False,
                                                separators=(",", ":")).encode()).hexdigest()
-            save_metadata(key, {**result, "documentId": key, "initialFieldsDigest": initial_digest})
+            save_metadata(key, {**meta, "initialFieldsDigest": initial_digest})
             try:
                 shop.register_job(g.sid, key, len(result["pages"]), len(result.get("existingFields", [])))
             except Exception:
@@ -315,12 +374,15 @@ def create_app(*, mode=None, commerce_service=None):
         else:
             if len(documents) >= 4:
                 documents.popitem(last=False)
-            documents[key] = (time.monotonic(), data, {})
+            documents[key] = (time.monotonic(), data, {"metadata": meta})
         return jsonify({**result, "documentId": key})
 
     @app.get("/api/page/<job>/<int:index>")
+    @measured("render")
     def page(job, index):
-        data, _ = session_data(job)
+        data, cache = session_data(job)
+        meta = document_metadata(job, cache)
+        measure_document(job, len(meta.get("pages", [])))
         return app.response_class(render_page(data, index), mimetype="image/png")
 
     @app.get("/api/jobs/<job>/metadata")
@@ -336,13 +398,16 @@ def create_app(*, mode=None, commerce_service=None):
 
     @app.post("/api/export")
     @app.post("/api/prepare")
+    @measured("prepare")
     def prepare():
         body = read_json()
         fields = body.get("fields")
         if not isinstance(fields, list):
             raise ValueError("La lista de campos es inválida.")
         job = body.get("documentId")
-        data, _ = session_data(job)
+        data, cache = session_data(job)
+        meta = document_metadata(job, cache)
+        measure_document(job, len(meta.get("pages", [])), len(fields))
         if web:
             return prepare_hosted(job, data, fields)
         output = export_pdf(data, fields)
@@ -352,6 +417,7 @@ def create_app(*, mode=None, commerce_service=None):
 
     @app.post("/api/jobs/<job>/prepare")
     @hosted_only
+    @measured("prepare")
     def prepare_job(job):
         body = read_json()
         data, _ = session_data(job)
@@ -362,11 +428,13 @@ def create_app(*, mode=None, commerce_service=None):
 
     @app.get("/api/jobs/<job>/original")
     @hosted_only
+    @measured("download")
     def original(job):
         data, _ = session_data(job)
         meta = json.loads(metadata_path(job).read_text(encoding="utf-8"))
         if not meta.get("existingFields"):
             raise ValueError("Este PDF todavía requiere campos rellenables.")
+        measure_document(job, len(meta["pages"]))
         emit("original_download", job)
         return app.response_class(data, mimetype="application/pdf", headers={
             "Content-Disposition": 'attachment; filename="formulario-original-rellenable.pdf"'
@@ -409,8 +477,10 @@ def create_app(*, mode=None, commerce_service=None):
 
     @app.get("/api/jobs/<job>/download")
     @hosted_only
+    @measured("download")
     def download(job):
         final = shop.download(g.sid, job)
+        measure_document(job)
         return send_file(final, mimetype="application/pdf", as_attachment=True,
                          download_name="formulario-rellenable.pdf")
 
@@ -445,6 +515,105 @@ def create_app(*, mode=None, commerce_service=None):
     @admin_only
     def claims():
         return jsonify(shop.claims())
+
+    @app.get("/api/admin/usage")
+    @hosted_only
+    @admin_only
+    def usage_report():
+        return jsonify(meter.report(request.args.get("month")))
+
+    @app.post("/api/admin/usage/actual")
+    @hosted_only
+    @admin_only
+    def usage_actual():
+        body = read_json()
+        return jsonify(meter.set_monthly_actual(body.get("month"), body.get("totalUSD")))
+
+    @app.get("/api/field-learning")
+    def field_learning_status():
+        status = learning_status()
+        return jsonify(autoApply=status["autoApply"], modelVersion=status["stats"]["modelVersion"],
+                       reviews=status["stats"]["reviews"], mode="automatic" if status["autoApply"] else "observation")
+
+    @app.post("/api/field-learning/review")
+    @measured("prepare")
+    def field_review():
+        body = read_json()
+        if body.get("reviewed") is not True or body.get("contribute") is not True:
+            raise ValueError("Confirmá que revisaste los campos y querés compartir sus patrones.")
+        job, fields = body.get("documentId"), body.get("fields")
+        if not isinstance(fields, list):
+            raise ValueError("La lista de campos es inválida.")
+        data, cache = session_data(job)
+        meta = document_metadata(job, cache)
+        if "baselineFields" not in meta:
+            raise ValueError("Volvé a abrir el PDF para registrar una revisión con el detector actual.")
+        measure_document(job, len(meta["pages"]), len(fields) if isinstance(fields, list) else 0)
+        # The normal export checks also enforce the paid editing window.
+        if web:
+            prepare_hosted(job, data, fields)
+        else:
+            export_pdf(data, fields)
+        result = learner.record_review(job, meta["baselineFields"], fields, meta["pages"])
+        return jsonify(message="Revisión registrada. Se guardaron patrones de posición y tamaño, sin textos del PDF.",
+                       saved=web, autoApply=auto_learning(), learning=result)
+
+    @app.get("/api/admin/field-learning")
+    @hosted_only
+    @admin_only
+    def admin_learning_status():
+        return jsonify(learning_status())
+
+    @app.post("/api/admin/field-learning/settings")
+    @hosted_only
+    @admin_only
+    def learning_options():
+        enabled = read_json().get("autoApply")
+        if type(enabled) is not bool:
+            raise ValueError("Indicá si querés activar o desactivar los ajustes aprendidos.")
+        stats = learner.stats()
+        if enabled and not (stats["eligibleAdjustments"] or stats["eligibleSuppressions"]):
+            return jsonify(error="Todavía no hay patrones con evidencia suficiente. Seguí reuniendo revisiones."), 409
+        temporary = learning_settings.with_suffix(".tmp")
+        temporary.write_text(json.dumps({"autoApply": enabled}), encoding="utf-8")
+        temporary.replace(learning_settings)
+        return jsonify(learning_status())
+
+    def learning_export():
+        return app.response_class(learner.export_bundle(), mimetype="application/zip", headers={
+            "Content-Disposition": 'attachment; filename="patrones-planilla.zip"'
+        })
+
+    def learning_import():
+        if request.mimetype not in {"application/zip", "application/x-zip-compressed"}:
+            raise ValueError("Seleccioná el ZIP de patrones exportado por Planilla.")
+        data = request.get_data()
+        if len(data) > MAX_BUNDLE:
+            raise ValueError("El ZIP supera el límite de 2 MB.")
+        learner.import_bundle(data)
+        return jsonify(learning_status())
+
+    @app.get("/api/admin/field-learning/export")
+    @hosted_only
+    @admin_only
+    def admin_learning_export():
+        return learning_export()
+
+    @app.post("/api/admin/field-learning/import")
+    @hosted_only
+    @admin_only
+    def admin_learning_import():
+        return learning_import()
+
+    @app.get("/api/field-learning/export")
+    def local_learning_export():
+        local_only()
+        return learning_export()
+
+    @app.post("/api/field-learning/import")
+    def local_learning_import():
+        local_only()
+        return learning_import()
 
     @app.post("/api/admin/claims/<claim_id>/refund")
     @hosted_only
@@ -495,6 +664,7 @@ def create_app(*, mode=None, commerce_service=None):
             while True:
                 try:
                     shop.cleanup()
+                    meter.cleanup()
                 except Exception as error:
                     app.logger.error("Private-file cleanup failed (%s)", type(error).__name__)
                 time.sleep(300)

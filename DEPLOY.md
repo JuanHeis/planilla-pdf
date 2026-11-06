@@ -22,7 +22,7 @@ Las claves se ingresan en Railway Variables. No se pegan en el chat, el código 
 Preparada el 6 de noviembre de 2026 en el espacio personal **Juan H's Projects**, proyecto **Planilla**, servicio **planilla-web**.
 
 - URL: https://planilla-web-production.up.railway.app
-- Fuente: `JuanHeis/planilla-pdf`, rama `main`, con despliegue automático al subir commits.
+- Fuente: `JuanHeis/planilla-pdf`, rama `main`. El despliegue explícito funciona; la actualización automática por push sigue pendiente de comprobar. Revisar la cuenta GitHub vinculada a Railway y Source → autodeploy antes de depender de ella.
 - Región: **sfo**, Estados Unidos. Una réplica, máximo 1 vCPU y 1 GB de RAM.
 - Volumen: **planilla-data**, 1 GB, montado en `/data`.
 - Comprobación de salud: `/health`.
@@ -31,6 +31,14 @@ Preparada el 6 de noviembre de 2026 en el espacio personal **Juan H's Projects**
 - Backups y límites de gasto del espacio todavía no configurados. Los límites de CPU, RAM y disco anteriores no equivalen a un límite de facturación.
 
 Para habilitar las verificaciones, configurar `RESEND_API_KEY` y `EMAIL_FROM` de un dominio verificado. Para habilitar cobros, configurar las tres variables de Mercado Pago y verificar el flujo con el proveedor. El endpoint es `https://planilla-web-production.up.railway.app/api/webhooks/mercadopago`. Definir `SUPPORT_EMAIL` cuando el dueño elija el contacto comercial.
+
+## Costos y aprendizaje
+
+El panel `/static/admin.html` usa `ADMIN_TOKEN` y agrega mediciones de CPU, duración, páginas, operaciones y fallos. El administrador puede ingresar el gasto real de infraestructura del mes para calcular el costo medio por PDF. La CPU estimada es solo una parte del costo; el escenario de Hobby reparte USD 5 y no agrega otros USD 5. Se miden operaciones desde la instalación de esta función, no se inventa un histórico de consumo. Detalle en COST-MEASUREMENT.md.
+
+La revisión de campos del editor es opcional y requiere una confirmación explícita. Compara la propuesta original con los campos revisados y guarda patrones geométricos sin textos del PDF. En web comienza en observación. El administrador puede habilitar ajustes automáticos únicamente cuando hay reglas elegibles; cinco estructuras distintas para ajustes y ocho para supresiones conservadoras. El conteo y los controles no garantizan alcanzar un 80–90 % de cobertura. El piloto todavía no crea automáticamente campos omitidos. Detalle en FIELD-LEARNING.md.
+
+Los patrones pueden exportarse/importarse como ZIP desde el panel administrativo, o en modo local desde el editor. Las revisiones geométricas son seudonimizadas, no completamente anónimas; su política de retención debe acordarse antes de abrir el servicio a clientes. Los ZIP exportan estadísticas agregadas, no los PDFs, textos o identificadores de trabajos.
 
 ## Railway
 

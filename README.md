@@ -26,6 +26,10 @@ Las autorizaciones y archivos privados se guardan en SQLite y un volumen persist
 
 El modo web requiere configurar los proveedores antes de aceptar clientes. Las pruebas automatizadas usan proveedores simulados y no realizan cobros ni envían mensajes reales.
 
+El panel administrativo mide CPU y tiempo por operación, y calcula el costo medio por PDF cuando el dueño ingresa el gasto mensual real. La CPU estimada es un costo parcial. [Medición de costos](COST-MEASUREMENT.md).
+
+El editor permite confirmar y aportar revisiones para aprender patrones geométricos sin guardar textos del PDF en el modelo. La web comienza en observación; el administrador controla cuándo aplicar ajustes conservadores y puede importar/exportar aprendizaje por ZIP. Este piloto ajusta candidatos existentes y todavía no aprende a crear campos omitidos. [Alcance y validación del aprendizaje](FIELD-LEARNING.md).
+
 ## Verificación
 
 ```sh

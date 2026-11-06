@@ -300,3 +300,12 @@ select, .panel-section input { color: var(--ink); background: var(--white); bord
 @media(max-width:680px){.service-availability{width:calc(100% - 24px);padding:12px 14px}}
 @media(max-width:680px){.topbar{flex-wrap:wrap}.top-actions{flex:1 1 auto;justify-content:flex-end;flex-wrap:wrap}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+.learning-review { margin-top: 18px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--white); }
+.learning-review summary { color: var(--accent); cursor: pointer; font-weight: 600; }
+.learning-review p { margin: 12px 0; max-width: 85ch; font-size: .9rem; color: var(--muted); }
+.learning-consent { display: flex; align-items: flex-start; gap: 9px; font-size: .9rem; line-height: 1.5; }
+.learning-consent input { flex: 0 0 auto; margin-top: 5px; accent-color: var(--accent); }
+.learning-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 20px; margin-top: 15px; }
+.learning-actions label { cursor: pointer; }
+.learning-review .learning-note { font-size: .82rem; }
+@media(max-width:680px){.learning-review{padding:14px}.learning-actions{align-items:stretch}.learning-actions .button{width:100%}}

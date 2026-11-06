@@ -124,6 +124,20 @@
           <p class="field-tip"><svg class="icon"><use href="#i-info"/></svg><span>Arrastrá un campo nuevo para moverlo. También podés seleccionarlo y usar las flechas. Con Mayús se mueve más rápido.</span></p>
         </aside>
       </div>
+      <details class="learning-review" id="learning-review">
+        <summary>Ayudar a mejorar la detección</summary>
+        <p>Opcional. Podés compartir los patrones de posición, tamaño y tipo de tus ajustes. El aprendizaje no guarda textos ni copias del PDF. No consume tu gratuito ni inicia un pago.</p>
+        <p id="learning-mode" class="learning-mode"></p>
+        <label class="learning-consent"><input id="learning-consent" type="checkbox"> Revisé todas las páginas y quiero aportar estos patrones para mejorar otros formularios.</label>
+        <div class="learning-actions">
+          <button id="learning-save" class="button secondary" type="button" disabled>Guardar esta revisión</button>
+          <button id="learning-export" class="text-button" type="button" hidden>Descargar aprendizaje</button>
+          <button id="learning-import-label" class="text-button" type="button" hidden>Importar aprendizaje</button>
+          <input id="learning-import" type="file" accept=".zip,application/zip" hidden>
+        </div>
+        <p id="learning-status" role="status" aria-live="polite"></p>
+        <p class="learning-note">Por ahora aprende a ajustar campos que logró detectar. Los campos que agregás permiten medir los faltantes; todavía no aprende a crearlos automáticamente.</p>
+      </details>
     </section>
   </main>
   <footer class="footer">

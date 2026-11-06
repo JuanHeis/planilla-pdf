@@ -39,6 +39,8 @@ function track(event) {
 
 function markChanged() {
   changed = true;
+  byId("learning-consent").checked = false;
+  byId("learning-save").disabled = true;
 }
 
 function displayPdf(result, filename) {
@@ -51,6 +53,14 @@ function displayPdf(result, filename) {
   ui["editor-actions"].hidden = false;
   ui.filename.textContent = filename;
   byId("download-original").hidden = !appConfig.commercial || !pdf.existingFields.length;
+  byId("learning-consent").checked = false;
+  byId("learning-save").disabled = true;
+  byId("learning-status").textContent = "";
+  const learned = pdf.learning?.changes || [];
+  const applied = learned.filter((item) => item.applied).length;
+  byId("learning-mode").textContent = pdf.learning?.mode === "conservative"
+    ? (applied ? "Se aplicaron " + applied + " ajustes aprendidos. Revisalos junto con los demás campos." : "Los ajustes aprendidos se aplican cuando hay evidencia suficiente. Este resultado sigue necesitando tu revisión.")
+    : "El aprendizaje está en observación: registra ejemplos revisados y evalúa patrones sin modificar la detección actual.";
   ui["page-picker"].replaceChildren(...pdf.pages.map((_, index) => {
     const option = document.createElement("option");
     option.value = String(index);
@@ -388,6 +398,58 @@ ui.demo.addEventListener("click", () => {
   if (mayReplace()) openPdf(null, true);
 });
 ui.export.addEventListener("click", exportPdf);
+byId("learning-consent").addEventListener("change", () => {
+  byId("learning-save").disabled = busy || !byId("learning-consent").checked;
+});
+byId("learning-save").addEventListener("click", async () => {
+  if (!pdf || busy || !byId("learning-consent").checked) return;
+  const snapshot = JSON.stringify(pdf.fields);
+  const job = pdf.documentId;
+  setBusy(true);
+  byId("learning-save").disabled = true;
+  byId("learning-status").textContent = "Comparando tus ajustes con la detección inicial…";
+  try {
+    const response = await checkedFetch("/api/field-learning/review", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ documentId: job, fields: JSON.parse(snapshot), reviewed: true, contribute: true }),
+    });
+    const result = await response.json();
+    if (pdf.documentId !== job) return;
+    const changes = result.learning.changes;
+    byId("learning-status").textContent = "Revisión guardada: " + changes.approved + " campos conservados, "
+      + changes.moved + " movidos, " + changes.resized + " redimensionados, " + changes.deleted + " quitados y "
+      + changes.added + " agregados. " + (result.autoApply ? "Los patrones consistentes pueden ayudar en otros formularios." : "Se evaluarán los patrones antes de activar ajustes automáticos.");
+    if (result.saved && JSON.stringify(pdf.fields) === snapshot) changed = false;
+    byId("learning-consent").checked = false;
+  } catch (error) {
+    byId("learning-status").textContent = error.message + " Tu gratuito no se consumió por este paso.";
+  } finally {
+    setBusy(false);
+    byId("learning-save").disabled = !byId("learning-consent").checked;
+  }
+});
+byId("learning-export").addEventListener("click", () => {
+  if (!appConfig.commercial) window.location.assign("/api/field-learning/export");
+});
+byId("learning-import-label").addEventListener("click", () => {
+  if (!appConfig.commercial && !busy) byId("learning-import").click();
+});
+byId("learning-import").addEventListener("change", async (event) => {
+  const file = event.target.files[0];
+  event.target.value = "";
+  if (!file || appConfig.commercial || busy) return;
+  if (file.size > 2 * 1024 * 1024) {
+    byId("learning-status").textContent = "El ZIP debe pesar hasta 2 MB.";
+    return;
+  }
+  setBusy(true);
+  try {
+    await checkedFetch("/api/field-learning/import", { method: "POST", headers: { "Content-Type": "application/zip" }, body: file });
+    byId("learning-status").textContent = "Patrones importados. Se usarán al abrir el próximo formulario cuando tengan evidencia suficiente.";
+  } catch (error) {
+    byId("learning-status").textContent = error.message;
+  } finally { setBusy(false); }
+});
 ui["toggle-existing"].addEventListener("click", () => setExistingVisibility(!showExisting));
 
 for (const eventType of ["dragenter", "dragover"]) {
@@ -602,6 +664,8 @@ async function initializeService() {
     notify();
     if (!appConfig.commercial) {
       byId("local-ocr-link").hidden = false;
+      byId("learning-export").hidden = false;
+      byId("learning-import-label").hidden = false;
       byId("processing-place").textContent = "Tus archivos se procesan en esta computadora.";
       return;
     }
