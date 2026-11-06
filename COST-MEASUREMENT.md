@@ -16,7 +16,7 @@ Los registros detallados vencen a los 90 días mediante `cleanup()`. Los importe
 2. **Escenario mínimo Hobby por PDF:** USD 5 divididos por los trabajos observados del mes. Es una referencia para presupuestar el mínimo, no una factura ni una predicción del excedente. Hobby no suma USD 5 de consumo a otros USD 5 del plan: el mínimo incluye esos primeros USD 5 de recursos.
 3. **Costo mensual asignado por PDF:** el dueño ingresa el costo de infraestructura que corresponde a ese mes y se divide por los trabajos distintos con actividad medida. El denominador incluye gratuitos y originales, además de pagos; el gasto incluye reintentos y fallos. Este promedio ayuda a fijar precio, pero no afirma cuánto costó cada archivo concreto.
 
-Sin un costo mensual ingresado, el costo completo queda como no disponible. La app no deduce RAM consumida a partir del máximo de 1 GB del servicio, ni presenta tamaño del PDF como facturación de almacenamiento.
+Sin un costo mensual ingresado, el costo completo queda como no disponible. La app no deduce RAM consumida a partir del máximo de 1 GB del servicio, ni presenta tamaño del PDF como facturación de almacenamiento. La CPU medida es la del proceso Python; no incluye la CPU de subprocesos como Tesseract. Para comparar formularios escaneados conviene usar también sus tiempos y el costo mensual real.
 
 Los períodos son meses calendario UTC. Railway puede facturar por un ciclo con otras fechas: el dueño debe asignar el costo a un período comparable. La cuenta de Railway debe corresponder a Planilla o repartirse entre proyectos antes de cargar un importe. Descuentos, créditos, impuestos y otros proveedores deben tratarse consistentemente; no se convierte USD a ARS automáticamente.
 
