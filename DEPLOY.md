@@ -17,6 +17,21 @@ La versión alojada usa una aplicación Python con Flask y Gunicorn. Los archivo
 
 Las claves se ingresan en Railway Variables. No se pegan en el chat, el código ni el repositorio.
 
+## Instalación inicial en Railway
+
+Preparada el 6 de noviembre de 2026 en el espacio personal **Juan H's Projects**, proyecto **Planilla**, servicio **planilla-web**.
+
+- URL: https://planilla-web-production.up.railway.app
+- Fuente: `JuanHeis/planilla-pdf`, rama `main`, con despliegue automático al subir commits.
+- Región: **sfo**, Estados Unidos. Una réplica, máximo 1 vCPU y 1 GB de RAM.
+- Volumen: **planilla-data**, 1 GB, montado en `/data`.
+- Comprobación de salud: `/health`.
+- `ADMIN_TOKEN` generado y cargado como variable privada. El dueño puede consultarlo en Railway, servicio, Variables; no está en el repositorio.
+- Correo y pagos todavía sin credenciales. La web informa esa disponibilidad y permite probar la detección y edición. Los originales ya rellenables siguen pudiendo descargarse.
+- Backups y límites de gasto del espacio todavía no configurados. Los límites de CPU, RAM y disco anteriores no equivalen a un límite de facturación.
+
+Para habilitar las verificaciones, configurar `RESEND_API_KEY` y `EMAIL_FROM` de un dominio verificado. Para habilitar cobros, configurar las tres variables de Mercado Pago y verificar el flujo con el proveedor. El endpoint es `https://planilla-web-production.up.railway.app/api/webhooks/mercadopago`. Definir `SUPPORT_EMAIL` cuando el dueño elija el contacto comercial.
+
 ## Railway
 
 1. Crear el servicio desde el repositorio de Planilla. La raíz del servicio debe ser la carpeta que contiene Dockerfile y requirements.txt.

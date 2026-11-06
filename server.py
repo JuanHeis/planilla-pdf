@@ -250,10 +250,14 @@ def create_app(*, mode=None, commerce_service=None):
 
     @app.get("/api/config")
     def config():
+        sender = os.environ.get("EMAIL_FROM", os.environ.get("SMTP_USERNAME", ""))
         return jsonify(commercial=web, price=2990, currency="ARS", maxPages=5, freeMaxPages=2,
                        sourceUrl="/source", supportEmail=os.environ.get("SUPPORT_EMAIL", ""),
-                       emailConfigured=bool(os.environ.get("RESEND_API_KEY") or
-                                            (os.environ.get("SMTP_USERNAME") and os.environ.get("SMTP_PASSWORD"))))
+                       paymentsConfigured=bool(os.environ.get("MERCADOPAGO_ACCESS_TOKEN") and
+                                               os.environ.get("MERCADOPAGO_COLLECTOR_ID") and
+                                               os.environ.get("MERCADOPAGO_WEBHOOK_SECRET")),
+                       emailConfigured=bool(sender and (os.environ.get("RESEND_API_KEY") or
+                                            (os.environ.get("SMTP_USERNAME") and os.environ.get("SMTP_PASSWORD")))))
 
     @app.get("/demo.pdf")
     def demo():
