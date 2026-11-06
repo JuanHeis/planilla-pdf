@@ -5,17 +5,22 @@
     "usage-summary", "usage-actual-form", "usage-actual", "usage-detail", "usage-operations", "usage-limitations",
     "learning-status", "learning-data", "learning-mode", "learning-summary", "learning-guidance", "learning-toggle",
     "learning-export", "learning-confirm", "learning-confirm-text", "learning-confirm-apply", "learning-confirm-cancel",
-    "learning-import-form", "learning-import"];
+    "learning-import-form", "learning-import", "test-mailbox-section", "test-mailbox-refresh",
+    "test-mailbox-status", "test-mailbox-retention", "test-mailbox-list"];
   const nodes = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
   const number = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 3 });
   const dollars = new Intl.NumberFormat("es-AR", { style: "currency", currency: "USD", maximumFractionDigits: 5 });
   let active = false;
+  let activeToken = "";
   let epoch = 0;
   let usageBusy = false;
   let learningBusy = false;
   let learning;
   let pendingMode;
   let reportedMonth;
+  let mailboxBusy = false;
+  let mailboxVersion = 0;
+  let testEmailEnabled = false;
   nodes["usage-month"].value = new Date().toISOString().slice(0, 7);
 
   function notice(id, text, error = false) {
@@ -38,7 +43,98 @@
 
   const usd = (value, empty = "Sin datos") => typeof value === "number" && Number.isFinite(value) ? dollars.format(value) : empty;
   const quantity = (value) => number.format(Number.isFinite(value) ? value : 0);
-  const current = (stamp) => active && stamp === epoch && Boolean(accessToken);
+  const current = (stamp) => active && stamp === epoch && Boolean(accessToken) && accessToken === activeToken;
+
+  function mailboxWaiting(value) {
+    mailboxBusy = value;
+    nodes["test-mailbox-refresh"].disabled = value;
+    nodes["test-mailbox-section"].setAttribute("aria-busy", String(value));
+  }
+
+  function clearMailbox() {
+    mailboxVersion += 1;
+    nodes["test-mailbox-section"].hidden = true;
+    nodes["test-mailbox-list"].replaceChildren();
+    nodes["test-mailbox-retention"].textContent = "";
+    nodes["test-mailbox-status"].textContent = "";
+    mailboxWaiting(false);
+  }
+
+  function verificationLink(value) {
+    try {
+      const url = new URL(value, window.location.origin);
+      if (url.origin !== window.location.origin || url.pathname !== "/verify" || !url.searchParams.get("token") || url.username || url.password) return;
+      return url;
+    } catch { return; }
+  }
+
+  function renderMailbox(result) {
+    if (result.enabled !== true) {
+      clearMailbox();
+      return;
+    }
+    const messages = Array.isArray(result.messages) ? result.messages.slice(0, 100) : [];
+    const dateFormat = new Intl.DateTimeFormat("es-AR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    nodes["test-mailbox-list"].replaceChildren(...messages.map((item) => {
+      const row = document.createElement("li");
+      const title = document.createElement("h3");
+      title.textContent = item.subject || "Correo de prueba";
+      const meta = document.createElement("p");
+      meta.className = "admin-hint test-mailbox-meta";
+      const created = new Date(Number(item.created) * 1000);
+      meta.textContent = (item.to || "Destinatario de prueba") + " · " + (Number.isFinite(created.getTime()) ? dateFormat.format(created) : "Fecha no disponible");
+      row.append(title, meta);
+      const target = verificationLink(item.verificationUrl);
+      if (target) {
+        const link = document.createElement("a");
+        link.className = "button secondary";
+        link.textContent = "Abrir enlace de prueba";
+        link.href = target.href;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.setAttribute("aria-label", "Abrir enlace de prueba para " + (item.to || "este destinatario") + " en otra pestaña");
+        row.append(link);
+      } else {
+        const explanation = document.createElement("p");
+        explanation.className = "admin-hint";
+        explanation.textContent = "No abrimos este enlace porque no corresponde a esta dirección del servicio. Revisá la dirección configurada para las pruebas.";
+        row.append(explanation);
+      }
+      const details = document.createElement("details");
+      const summary = document.createElement("summary");
+      summary.textContent = "Ver mensaje";
+      const text = document.createElement("p");
+      text.className = "test-mailbox-text";
+      text.textContent = item.text || "Sin texto disponible.";
+      details.append(summary, text);
+      row.append(details);
+      return row;
+    }));
+    const minutes = Number.isFinite(result.retentionSeconds) && result.retentionSeconds > 0 ? Math.ceil(result.retentionSeconds / 60) : 15;
+    nodes["test-mailbox-retention"].textContent = "La bandeja conserva los mensajes durante " + minutes + " minutos. Si un enlace venció o ya se usó, generá otro desde la descarga o la recuperación.";
+    notice("test-mailbox-status", messages.length
+      ? "Bandeja de prueba actualizada. Abrí el enlace del correo que estás probando."
+      : "Todavía no hay correos de prueba. Generá un enlace desde la descarga o la recuperación y después actualizá esta bandeja.");
+  }
+
+  async function refreshMailbox() {
+    if (!active || !testEmailEnabled || mailboxBusy) return;
+    const stamp = epoch;
+    const version = ++mailboxVersion;
+    const currentMailbox = () => current(stamp) && testEmailEnabled && version === mailboxVersion;
+    mailboxWaiting(true);
+    notice("test-mailbox-status", "Consultando los correos de prueba…");
+    try {
+      const result = await call("/api/admin/test-mailbox");
+      if (currentMailbox()) renderMailbox(result);
+    } catch (error) {
+      if (currentMailbox()) notice("test-mailbox-status", error.message + " Podés actualizar la bandeja para reintentar.", true);
+    } finally {
+      if (currentMailbox()) mailboxWaiting(false);
+    }
+  }
+
+  nodes["test-mailbox-refresh"].addEventListener("click", refreshMailbox);
 
   function usageWaiting(value) {
     usageBusy = value;
@@ -261,17 +357,32 @@
       if (current(stamp)) learningWaiting(false);
     }
   });
-  window.addEventListener("planilla:admin-open", () => {
-    if (!active) { active = true; epoch += 1; }
+  window.addEventListener("planilla:admin-open", (event) => {
+    if (!active || activeToken !== accessToken) {
+      active = true;
+      activeToken = accessToken;
+      epoch += 1;
+      mailboxWaiting(false);
+      usageWaiting(false);
+      learningWaiting(false);
+    }
+    const mailboxEnabled = event.detail?.testMode === true && event.detail?.testEmailEnabled === true;
+    if (testEmailEnabled !== mailboxEnabled) clearMailbox();
+    testEmailEnabled = mailboxEnabled;
+    nodes["test-mailbox-section"].hidden = !testEmailEnabled;
+    if (testEmailEnabled) refreshMailbox();
     refreshUsage();
     refreshLearning();
   });
   window.addEventListener("planilla:admin-close", () => {
     active = false;
+    activeToken = "";
     epoch += 1;
     learning = undefined;
     reportedMonth = undefined;
     pendingMode = undefined;
+    testEmailEnabled = false;
+    clearMailbox();
     nodes["usage-data"].hidden = true;
     nodes["learning-data"].hidden = true;
     nodes["learning-confirm"].hidden = true;

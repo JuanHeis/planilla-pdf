@@ -4,9 +4,11 @@ const admin = Object.fromEntries([
   "admin-access", "admin-login", "admin-token", "admin-status", "admin-report",
   "admin-summary", "admin-funnel", "admin-daily", "admin-updated", "admin-refresh", "admin-logout", "admin-claims",
   "refund-dialog", "refund-details", "refund-status", "refund-confirm", "refund-cancel",
+  "admin-test-mode", "refund-explanation",
 ].map((id) => [id, document.getElementById(id)]));
 let accessToken = "";
 let adminEpoch = 0;
+let adminTestMode = false;
 let loading = false;
 let pendingClaim;
 let refunding = false;
@@ -79,11 +81,15 @@ function claimRow(claim) {
   const refund = document.createElement("button");
   refund.type = "button";
   refund.className = "button secondary";
-  refund.textContent = "Solicitar devolución";
+  refund.textContent = adminTestMode ? "Solicitar devolución de prueba" : "Solicitar devolución";
   refund.addEventListener("click", () => {
     if (loading || refunding) return;
     pendingClaim = claim;
-    admin["refund-details"].textContent = "Vas a solicitar la devolución de la orden " + claim.provider_id + " para " + claim.email + ".";
+    admin["refund-details"].textContent = "Vas a solicitar la devolución de la orden " + (adminTestMode ? "de prueba " : "") + claim.provider_id + " para " + claim.email + ".";
+    admin["refund-explanation"].textContent = adminTestMode
+      ? "Se simulará una devolución en Mercado Pago. No se mueve dinero real."
+      : "La devolución se solicita a Mercado Pago. El plazo de acreditación depende del medio de pago.";
+    admin["refund-confirm"].textContent = adminTestMode ? "Confirmar devolución de prueba" : "Confirmar devolución";
     admin["refund-status"].hidden = true;
     admin["refund-dialog"].showModal();
   });
@@ -94,8 +100,8 @@ function claimRow(claim) {
 function render(metrics, claims) {
   const counts = metrics.counts || {};
   admin["admin-summary"].replaceChildren(
-    summary("Cobros aprobados, antes de comisiones", amounts.format(metrics.grossApprovedARS || 0)),
-    summary("Devoluciones confirmadas", amounts.format(metrics.refundedARS || 0)),
+    summary(adminTestMode ? "Pagos de prueba aprobados" : "Cobros aprobados, antes de comisiones", amounts.format(metrics.grossApprovedARS || 0)),
+    summary(adminTestMode ? "Devoluciones de prueba confirmadas" : "Devoluciones confirmadas", amounts.format(metrics.refundedARS || 0)),
     summary("Reclamos pendientes", String(metrics.openClaims || 0)),
   );
   admin["admin-funnel"].replaceChildren(...stages.map(([key, label]) => {
@@ -139,15 +145,17 @@ async function refresh() {
   loading = true;
   admin["admin-refresh"].disabled = true;
   try {
-    const [metrics, claims] = await Promise.all([
-      call("/api/admin/metrics"), call("/api/admin/claims"),
+    const [metrics, claims, configuration] = await Promise.all([
+      call("/api/admin/metrics"), call("/api/admin/claims"), call("/api/config"),
     ]);
     if (!current()) return;
+    adminTestMode = configuration.testMode === true;
+    admin["admin-test-mode"].hidden = !adminTestMode;
     render(metrics, claims);
     admin["admin-access"].hidden = true;
     admin["admin-report"].hidden = false;
     admin["admin-status"].hidden = true;
-    window.dispatchEvent(new Event("planilla:admin-open"));
+    window.dispatchEvent(new CustomEvent("planilla:admin-open", { detail: configuration }));
   } catch (error) {
     if (current()) status(error.message, true);
   } finally {
@@ -173,33 +181,49 @@ admin["refund-cancel"].addEventListener("click", () => {
 admin["refund-confirm"].addEventListener("click", async () => {
   if (!pendingClaim || refunding) return;
   const claim = pendingClaim;
+  const epoch = adminEpoch;
+  const token = accessToken;
+  const current = () => epoch === adminEpoch && token === accessToken && Boolean(accessToken);
   refunding = true;
   admin["refund-confirm"].disabled = true;
   admin["refund-cancel"].disabled = true;
   admin["refund-status"].hidden = false;
   admin["refund-status"].dataset.error = "false";
-  admin["refund-status"].textContent = "Solicitando la devolución a Mercado Pago…";
+  admin["refund-status"].textContent = adminTestMode ? "Solicitando la devolución de prueba a Mercado Pago…" : "Solicitando la devolución a Mercado Pago…";
   try {
     const result = await call("/api/admin/claims/" + encodeURIComponent(claim.id) + "/refund", {});
+    if (!current()) return;
     admin["refund-dialog"].close();
     pendingClaim = undefined;
     await refresh();
-    status(result.message || (result.state === "refunded"
+    status(adminTestMode ? "Solicitud de devolución de prueba registrada. Actualizá la actividad para comprobar su estado." : result.message || (result.state === "refunded"
       ? "Mercado Pago confirmó la devolución. El plazo de acreditación depende del medio de pago."
       : "La devolución fue solicitada. Estamos esperando la confirmación de Mercado Pago."));
   } catch (error) {
+    if (!current()) return;
     admin["refund-status"].dataset.error = "true";
     admin["refund-status"].textContent = error.message;
   } finally {
-    refunding = false;
-    admin["refund-confirm"].disabled = false;
-    admin["refund-cancel"].disabled = false;
+    if (current()) {
+      refunding = false;
+      admin["refund-confirm"].disabled = false;
+      admin["refund-cancel"].disabled = false;
+    }
   }
 });
 admin["admin-logout"].addEventListener("click", () => {
   adminEpoch += 1;
   accessToken = "";
+  adminTestMode = false;
   loading = false;
+  pendingClaim = undefined;
+  refunding = false;
+  admin["refund-dialog"].close();
+  admin["refund-details"].textContent = "";
+  admin["refund-status"].textContent = "";
+  admin["refund-confirm"].disabled = false;
+  admin["refund-cancel"].disabled = false;
+  admin["admin-test-mode"].hidden = true;
   admin["admin-refresh"].disabled = false;
   window.dispatchEvent(new Event("planilla:admin-close"));
   admin["admin-access"].hidden = false;

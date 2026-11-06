@@ -8,6 +8,7 @@ window.PlanillaCheckout = (() => {
     "download-email", "download-email-button", "download-free", "download-pay", "download-file",
     "download-retry", "download-claim-form", "download-claim-reason", "download-claim-button",
     "download-contact", "download-success", "download-close", "download-edit",
+    "download-test-notice", "recovery-test-notice",
     "recovery-dialog", "recovery-form", "recovery-email", "recovery-status", "recovery-send",
     "recovery-jobs", "recovery-job-list", "recovery-other",
   ].map((id) => [id, element(id)]));
@@ -24,6 +25,9 @@ window.PlanillaCheckout = (() => {
   const money = (amount) => new Intl.NumberFormat("es-AR", {
     style: "currency", currency: "ARS", maximumFractionDigits: 0,
   }).format(amount);
+  const testMode = () => config.testMode === true;
+  const testMail = () => testMode() && config.testEmailEnabled === true;
+  const emailReady = () => config.emailConfigured === true || testMail();
 
   async function request(url, data) {
     const response = await fetch(url, data === undefined ? undefined : {
@@ -60,7 +64,7 @@ window.PlanillaCheckout = (() => {
     message(status.message || "Revisá las opciones para descargar tu PDF.",
       ["payment_rejected", "expired", "refunded"].includes(state) ? "warning" : "info");
     nodes["download-detail"].textContent = "";
-    nodes["download-email-form"].hidden = config.emailConfigured !== true || !["needs_email", "email_pending"].includes(state);
+    nodes["download-email-form"].hidden = !emailReady() || !["needs_email", "email_pending"].includes(state);
     nodes["download-free"].hidden = state !== "free_available";
     const resumePayment = state === "payment_pending" && Boolean(status.checkoutUrl);
     nodes["download-pay"].hidden = config.paymentsConfigured !== true || (!["payment_required", "payment_rejected"].includes(state) && !resumePayment);
@@ -68,18 +72,27 @@ window.PlanillaCheckout = (() => {
     nodes["download-retry"].hidden = !["needs_preparation", "email_pending", "payment_pending", "payment_rejected"].includes(state);
     nodes["download-price"].hidden = !["payment_required", "payment_rejected"].includes(state);
     nodes["download-claim-form"].hidden = !status.canClaim || Boolean(status.claimStatus);
-    nodes["download-email-button"].textContent = state === "email_pending" ? "Reenviar enlace al correo" : "Enviar enlace para confirmar";
+    nodes["download-email-button"].textContent = testMail()
+      ? state === "email_pending" ? "Generar otro enlace de prueba" : "Generar enlace de prueba"
+      : state === "email_pending" ? "Reenviar enlace al correo" : "Enviar enlace para confirmar";
     nodes["download-success"].hidden = !downloaded;
     nodes["download-contact"].hidden = !config.supportEmail;
     if (config.supportEmail) nodes["download-contact"].href = "mailto:" + config.supportEmail;
     const amount = status.price?.amount ?? config.price ?? 2990;
-    nodes["download-price"].textContent = money(amount) + " por este PDF · Hasta " + (config.maxPages ?? 5) + " páginas";
-    nodes["download-pay"].textContent = resumePayment ? "Continuar el pago en Mercado Pago" : "Pagar " + money(amount) + " con Mercado Pago";
+    nodes["download-price"].textContent = (testMode() ? "Importe de prueba: " : "") + money(amount) + " por este PDF · Hasta " + (config.maxPages ?? 5) + " páginas";
+    nodes["download-pay"].textContent = testMode()
+      ? resumePayment ? "Continuar el pago de prueba" : "Probar pago de " + money(amount) + " en Mercado Pago"
+      : resumePayment ? "Continuar el pago en Mercado Pago" : "Pagar " + money(amount) + " con Mercado Pago";
     if (status.email && !nodes["download-email"].value) nodes["download-email"].value = status.email;
     if (state === "needs_email") {
-      nodes["download-detail"].textContent = "Confirmá tu correo para recuperar este trabajo después. No necesitás crear una contraseña. Este paso todavía no consume tu descarga gratis.";
+      nodes["download-detail"].textContent = testMail()
+        ? "Ingresá un correo para identificar esta prueba. El enlace de confirmación aparecerá en la bandeja privada del administrador; no llegará a tu casilla. Este paso no consume tu descarga gratis."
+        : "Confirmá tu correo para recuperar este trabajo después. No necesitás crear una contraseña. Este paso todavía no consume tu descarga gratis.";
     } else if (state === "email_pending") {
-      nodes["download-detail"].textContent = "Abrí el enlace que te enviamos y volvé a esta página. Si no lo encontrás, revisá Correo no deseado. Todavía no se consumió tu descarga gratis.";
+      if (testMail()) message("Enlace de prueba generado. Tu gratuito no se consumió.");
+      nodes["download-detail"].textContent = testMail()
+        ? "Abrí la bandeja de correos de prueba del panel privado de administración y seguí el enlace de confirmación. Después volvé a este trabajo y comprobá el estado. No se envió un correo real."
+        : "Abrí el enlace que te enviamos y volvé a esta página. Si no lo encontrás, revisá Correo no deseado. Todavía no se consumió tu descarga gratis.";
     } else if (state === "free_available") {
       nodes["download-detail"].textContent = "La primera conversión de hasta " + (config.freeMaxPages ?? 2) + " páginas es gratis. Se habilita al pulsar Descargar gratis. Si la conexión falla, podés reintentar este mismo trabajo.";
     } else if (state === "payment_required") {
@@ -90,19 +103,27 @@ window.PlanillaCheckout = (() => {
         : "";
       nodes["download-detail"].textContent = freeExplanation + "Podés volver al editor antes de pagar. El precio incluye volver a corregir este trabajo durante 24 horas. El archivo descargable se conserva por 7 días.";
     } else if (state === "payment_pending") {
-      nodes["download-detail"].textContent = "Estamos esperando la confirmación de Mercado Pago. Si ya pagaste, esperá y comprobá el estado. Si cerraste Mercado Pago antes de terminar, podés continuar con la misma orden. Mientras el pago esté pendiente, no se puede preparar otra versión del PDF.";
+      nodes["download-detail"].textContent = testMode()
+        ? "Estamos esperando el resultado del pago de prueba de Mercado Pago. Comprobá el estado para actualizarlo. Si cerraste el checkout, podés continuar con la misma orden. No se puede preparar otra versión mientras esté pendiente."
+        : "Estamos esperando la confirmación de Mercado Pago. Si ya pagaste, esperá y comprobá el estado. Si cerraste Mercado Pago antes de terminar, podés continuar con la misma orden. Mientras el pago esté pendiente, no se puede preparar otra versión del PDF.";
     } else if (state === "payment_rejected") {
-      nodes["download-detail"].textContent = "Mercado Pago no confirmó este pago. Revisá el medio de pago e intentá nuevamente. Si ves un cargo en tu cuenta, comprobá el estado antes de volver a pagar.";
+      nodes["download-detail"].textContent = testMode()
+        ? "Mercado Pago no aprobó este pago de prueba. El motivo aparece arriba. Podés comprobar el estado o iniciar un nuevo intento con otro resultado de prueba."
+        : "Mercado Pago no confirmó este pago. Revisá el medio de pago e intentá nuevamente. Si ves un cargo en tu cuenta, comprobá el estado antes de volver a pagar.";
     } else if (ready) {
       nodes["download-detail"].textContent = status.grantKind === "original"
         ? "El original ya era rellenable. Podés descargarlo gratis. Esta descarga no consume una conversión."
         : "Podés volver a descargar este mismo trabajo sin pagar otra vez mientras siga disponible. Abrí la copia descargada para completar los campos.";
     } else if (state === "expired") {
-      nodes["download-detail"].textContent = "El plazo de este trabajo terminó y sus archivos se borraron. Podés abrir el PDF otra vez. Si ya habías pagado y necesitás ayuda, escribinos con el comprobante.";
+      nodes["download-detail"].textContent = testMode()
+        ? "El plazo de este trabajo de prueba terminó y sus archivos se borraron. Podés abrir el PDF otra vez para iniciar otro ensayo."
+        : "El plazo de este trabajo terminó y sus archivos se borraron. Podés abrir el PDF otra vez. Si ya habías pagado y necesitás ayuda, escribinos con el comprobante.";
     } else if (state === "refunded") {
-      nodes["download-detail"].textContent = "Mercado Pago confirmó la devolución. El plazo de acreditación depende de tu medio de pago.";
+      nodes["download-detail"].textContent = testMode()
+        ? "Mercado Pago confirmó la devolución de prueba. No se movió dinero real."
+        : "Mercado Pago confirmó la devolución. El plazo de acreditación depende de tu medio de pago.";
     }
-    if (config.emailConfigured !== true && ["needs_email", "email_pending"].includes(state)) {
+    if (!emailReady() && ["needs_email", "email_pending"].includes(state)) {
       message("La confirmación por correo todavía no está habilitada. Tu gratuito no se consumió.", "warning");
       nodes["download-detail"].textContent = "Podés volver al editor para seguir revisando y corrigiendo los campos. Por ahora no podemos enviar el enlace necesario para habilitar esta descarga.";
     } else if (config.paymentsConfigured !== true && ["payment_required", "payment_rejected", "payment_pending"].includes(state)) {
@@ -188,7 +209,7 @@ window.PlanillaCheckout = (() => {
     if (["download_ready", "payment_approved"].includes(current.state)) await downloadFile();
   }));
   nodes["download-pay"].addEventListener("click", () => action(async () => {
-    message("Abriendo Mercado Pago…");
+    message(testMode() ? "Abriendo el pago de prueba en Mercado Pago…" : "Abriendo Mercado Pago…");
     const result = current.state === "payment_pending" && current.checkoutUrl
       ? current
       : await request("/api/jobs/" + encodeURIComponent(jobId) + "/checkout", {});
@@ -214,7 +235,7 @@ window.PlanillaCheckout = (() => {
     downloaded = true;
     nodes["download-success"].hidden = false;
     nodes["download-success"].textContent = current.emailVerified
-      ? "Guardá la copia en tu equipo. También podés recuperarla con el enlace de tu correo."
+      ? testMail() ? "Guardá la copia en tu equipo. Para recuperar esta prueba, generá un enlace y abrilo desde la bandeja privada del administrador." : "Guardá la copia en tu equipo. También podés recuperarla con el enlace de tu correo."
       : "Guardá la copia en tu equipo para volver a usarla cuando la necesites.";
     message("Tu PDF fue descargado. Podés abrirlo para completar los campos.");
     window.dispatchEvent(new CustomEvent("planilla:downloaded", { detail: { recoveryAvailable: Boolean(current.emailVerified) } }));
@@ -245,14 +266,14 @@ window.PlanillaCheckout = (() => {
     nodes["recovery-status"].textContent = explanation || "Buscando los trabajos disponibles de esta sesión…";
     nodes["recovery-jobs"].hidden = true;
     nodes["recovery-other"].hidden = true;
-    nodes["recovery-form"].hidden = config.emailConfigured !== true;
+    nodes["recovery-form"].hidden = !emailReady();
     nodes["recovery-job-list"].replaceChildren();
     if (!nodes["recovery-dialog"].open) nodes["recovery-dialog"].showModal();
     try {
       const { jobs = [] } = await request("/api/jobs");
       if (!jobs.length) {
-        nodes["recovery-status"].textContent = config.emailConfigured === true
-          ? explanation || "Ingresá el correo que usaste para descargar o comprar."
+        nodes["recovery-status"].textContent = emailReady()
+          ? explanation || (testMail() ? "Ingresá el correo de esta prueba. El enlace de recuperación aparecerá en la bandeja privada del administrador." : "Ingresá el correo que usaste para descargar o comprar.")
           : (explanation ? explanation + " " : "No hay trabajos disponibles en esta sesión. ") + "La recuperación por correo todavía no está habilitada.";
         return;
       }
@@ -278,11 +299,11 @@ window.PlanillaCheckout = (() => {
         nodes["recovery-job-list"].append(item);
       }
       nodes["recovery-jobs"].hidden = false;
-      nodes["recovery-other"].hidden = config.emailConfigured !== true;
+      nodes["recovery-other"].hidden = !emailReady();
       nodes["recovery-form"].hidden = true;
       nodes["recovery-status"].textContent = explanation || "Abrí un trabajo para revisar sus campos o descargarlo. Cada uno muestra hasta cuándo sigue disponible.";
     } catch {
-      nodes["recovery-status"].textContent = config.emailConfigured === true
+      nodes["recovery-status"].textContent = emailReady()
         ? explanation || "No pudimos consultar esta sesión. Podés recuperar tus trabajos con el correo que usaste."
         : "No pudimos consultar tus trabajos. Cerrá esta ventana e intentá de nuevo. La recuperación por correo todavía no está habilitada.";
     }
@@ -300,7 +321,9 @@ window.PlanillaCheckout = (() => {
     nodes["recovery-status"].textContent = "Buscando tus trabajos…";
     try {
       await request("/api/recovery", { email: nodes["recovery-email"].value.trim() });
-      nodes["recovery-status"].textContent = "Si hay trabajos disponibles con ese correo, te enviamos un enlace para recuperarlos. Revisá también Correo no deseado.";
+      nodes["recovery-status"].textContent = testMail()
+        ? "Si hay trabajos disponibles con ese correo, generamos un enlace en la bandeja privada del administrador para recuperarlos. No se envió un correo real."
+        : "Si hay trabajos disponibles con ese correo, te enviamos un enlace para recuperarlos. Revisá también Correo no deseado.";
     } catch (error) {
       nodes["recovery-status"].textContent = error.message;
     } finally {
@@ -308,5 +331,10 @@ window.PlanillaCheckout = (() => {
     }
   });
 
-  return { configure(value) { config = value; }, open, refresh, openRecovery };
+  return { configure(value) {
+    config = value;
+    nodes["download-test-notice"].hidden = !testMode();
+    nodes["recovery-test-notice"].hidden = !testMail();
+    nodes["recovery-send"].textContent = testMail() ? "Generar enlace de recuperación de prueba" : "Enviar enlace de recuperación";
+  }, open, refresh, openRecovery };
 })();

@@ -25,6 +25,13 @@
     <div id="admin-status" class="admin-status" role="status" aria-live="polite" hidden></div>
     <section id="admin-report" hidden aria-labelledby="report-title">
       <div class="admin-report-title"><div><h1 id="report-title">Actividad de los últimos 30 días</h1><p id="admin-updated"></p></div><div class="admin-buttons"><button id="admin-refresh" class="button secondary" type="button">Actualizar</button><button id="admin-logout" class="text-button" type="button">Cerrar acceso</button></div></div>
+      <p id="admin-test-mode" class="test-mode-note" role="note" hidden>Entorno de prueba. Los pagos y las devoluciones de este panel son simulaciones y no mueven dinero real.</p>
+      <section id="test-mailbox-section" class="admin-extra test-mailbox" aria-labelledby="test-mailbox-title" hidden>
+        <div class="admin-report-title"><div><h2 id="test-mailbox-title">Bandeja de correos de prueba</h2><p class="admin-intro">Estos mensajes no se envían a una casilla real. Solo se pueden consultar con la clave de administración. Los enlaces se abren en otra pestaña.</p></div><button id="test-mailbox-refresh" class="button secondary" type="button">Actualizar bandeja</button></div>
+        <p id="test-mailbox-status" class="admin-status" role="status" aria-live="polite"></p>
+        <p id="test-mailbox-retention" class="admin-hint"></p>
+        <ul id="test-mailbox-list" class="test-mailbox-list"></ul>
+      </section>
       <dl id="admin-summary" class="admin-summary"></dl>
       <h2>Del primer intento a la descarga</h2>
       <p class="admin-intro">Los eventos muestran actividad. Una persona puede generar varios intentos o descargas.</p>
@@ -81,7 +88,7 @@
   <dialog id="refund-dialog" class="download-dialog" aria-labelledby="refund-title">
     <div class="dialog-heading"><h2 id="refund-title">Confirmar devolución</h2></div>
     <p id="refund-details" class="dialog-detail"></p>
-    <p>La devolución se solicita a Mercado Pago. El plazo de acreditación depende del medio de pago.</p>
+    <p id="refund-explanation">La devolución se solicita a Mercado Pago. El plazo de acreditación depende del medio de pago.</p>
     <p id="refund-status" class="admin-status" role="status" aria-live="polite" hidden></p>
     <div class="download-actions"><button id="refund-confirm" class="button primary" type="button">Confirmar devolución</button><button id="refund-cancel" class="button secondary" type="button">Volver sin devolver</button></div>
   </dialog>

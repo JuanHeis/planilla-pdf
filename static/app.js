@@ -654,7 +654,7 @@ window.addEventListener("planilla:prepared", (event) => {
 });
 window.addEventListener("planilla:downloaded", (event) => {
   notify(event.detail?.recoveryAvailable
-    ? "Tu PDF fue descargado. Podés recuperar este trabajo desde el enlace de tu correo."
+    ? appConfig.testEmailEnabled === true ? "Tu PDF de prueba fue descargado. Podés recuperarlo con un enlace de la bandeja privada del administrador." : "Tu PDF fue descargado. Podés recuperar este trabajo desde el enlace de tu correo."
     : "Tu PDF fue descargado. Guardá la copia en tu equipo para volver a usarla.");
 });
 
@@ -685,7 +685,8 @@ async function initializeService() {
     byId("service-offer").textContent = "Revisar es gratis. Tu primera conversión de hasta " + (appConfig.freeMaxPages ?? 2)
       + " páginas también. Después, ARS " + price + " por PDF de hasta " + (appConfig.maxPages ?? 5) + " páginas.";
     const availability = byId("service-availability");
-    if (appConfig.emailConfigured !== true) {
+    const emailConfigured = appConfig.emailConfigured === true || (appConfig.testMode === true && appConfig.testEmailEnabled === true);
+    if (!emailConfigured) {
       availability.textContent = "Podés probar la detección y corregir los campos. La confirmación por correo todavía no está habilitada para nuevas descargas. Los originales ya rellenables y las descargas que ya tenés habilitadas siguen disponibles.";
       availability.hidden = false;
       byId("welcome-intro").textContent = "Subí tu formulario y revisá la detección de campos. Podés corregirlos manualmente.";
@@ -697,16 +698,25 @@ async function initializeService() {
     } else {
       availability.hidden = true;
     }
+    if (appConfig.testMode === true) {
+      const explanations = ["Modo de prueba: los pagos se simulan y no generan cobros reales."];
+      if (appConfig.testEmailEnabled === true) explanations.push("Los enlaces de correo se consultan en la bandeja privada del administrador; no llegan a tu casilla.");
+      else if (!emailConfigured) explanations.push("La confirmación por correo todavía no está habilitada. Revisar el PDF no consume tu gratuito.");
+      if (appConfig.paymentsConfigured !== true) explanations.push("Los pagos de prueba todavía no están habilitados.");
+      availability.textContent = explanations.join(" ");
+      availability.hidden = false;
+      if (!byId("service-offer").hidden) byId("service-offer").textContent = "Prueba del servicio. " + byId("service-offer").textContent;
+    }
     byId("local-ocr-link").hidden = true;
     byId("open-recovery").hidden = false;
-    byId("processing-place").textContent = "Tus archivos se procesan de forma privada y se borran al vencer el trabajo.";
+    byId("processing-place").textContent = (appConfig.testMode === true ? "Entorno de prueba. " : "") + "Tus archivos se procesan de forma privada y se borran al vencer el trabajo.";
     ui.export.querySelector("span").textContent = "Continuar a descarga";
     for (const link of document.querySelectorAll('.source-link')) link.href = appConfig.sourceUrl || "/source";
     const query = new URLSearchParams(window.location.search);
     const verifyError = query.get("verify_error");
     if (verifyError) {
       const explanation = verifyError === "expired"
-        ? "El enlace de tu correo venció. Pedí uno nuevo para recuperar tu trabajo. No se consumió ninguna descarga por abrir este enlace."
+        ? "El enlace de confirmación venció. Pedí uno nuevo para recuperar tu trabajo. No se consumió ninguna descarga por abrir este enlace."
         : "No pudimos abrir este enlace. Pedí uno nuevo con el correo que usaste. No se consumió ninguna descarga por abrir este enlace.";
       notify(explanation, "warning");
       window.PlanillaCheckout.openRecovery(explanation);

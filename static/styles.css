@@ -279,6 +279,7 @@ select, .panel-section input { color: var(--ink); background: var(--white); bord
 .dialog-status[data-kind="error"] { color: var(--danger); background: #fceeee; border-color: #d8a8a9; }
 .dialog-status[data-kind="warning"] { color: #694616; background: #fff5e5; border-color: #ddc59f; }
 .dialog-detail { margin: 13px 0 17px; color: var(--muted); font-size: .9rem; }
+.test-mode-note { margin: 0 0 14px; padding: 11px 13px; border: 1px solid #ddc59f; border-radius: 7px; background: #fff5e5; color: #694616; font-size: .94rem; }
 .download-price { margin: 17px 0; font-size: 1.1rem; font-weight: 700; }
 .download-form { display: grid; gap: 9px; margin-block: 18px; }
 .download-form label, .claim-form label { font-size: .87rem; font-weight: 600; }
