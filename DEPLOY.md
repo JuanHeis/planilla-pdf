@@ -42,6 +42,20 @@ Los patrones pueden exportarse/importarse como ZIP desde el panel administrativo
 
 ## Railway
 
+### Ensayo con credenciales de prueba
+
+Antes de activar cobros reales se puede ejecutar el mismo flujo web en la computadora del dueño o en Railway con `APP_ENV=test`. Configurar `PLANILLA_TEST_EMAIL=1`, un `ADMIN_TOKEN` privado y las credenciales **de prueba** de Mercado Pago. El prefijo `APP_USR` no distingue por sí solo prueba de producción: verificar el selector **Prueba** del proveedor y confirmar la identidad de prueba antes de usar la clave.
+
+La bandeja privada reemplaza completamente SMTP/Resend, incluso si esas variables estuvieran configuradas. Los enlaces de confirmación y recuperación se consultan únicamente con acceso administrativo en `/api/admin/test-mailbox`; no se devuelven al solicitante del correo. Se conservan como máximo cien mensajes durante quince minutos en la base privada del servicio. Al desactivar el modo de correo de pruebas, esos mensajes se eliminan. El usuario debe abrir y confirmar el enlace normal: no se omiten autenticación, cuotas ni controles de pago.
+
+El modo falla al iniciar si se intenta habilitar la bandeja fuera de `APP_ENV=test` o sin `ADMIN_TOKEN`. La API pública informa `testMode` y `testEmailEnabled` para mostrar las advertencias correspondientes. Una orden del ambiente equivocado se rechaza antes de ofrecer su enlace de pago, incluyendo enlaces que hubieran quedado guardados en un despliegue anterior.
+
+Separar los datos del ensayo: por ejemplo, `PLANILLA_DATA_DIR=/data/sandbox` y `PLANILLA_OCR_STORE=/data/sandbox/aprendizaje-ocr.sqlite3` en Railway. Mantener las credenciales reales fuera de este entorno. Para notificaciones reales del proveedor al servidor local, usar una URL HTTPS temporal y configurar ese origen como `PUBLIC_BASE_URL`, junto con el secreto de Webhooks del ambiente de prueba.
+
+Al pasar al servicio real, usar un directorio de datos de producción separado, `APP_ENV=production`, `PLANILLA_TEST_EMAIL=0`, correo real y credenciales reales del mismo comercio. Repetir las comprobaciones de configuración antes de aceptar clientes; una prueba con correos simulados no valida la entrega de correo real.
+
+### Configuración del servicio
+
 1. Crear el servicio desde el repositorio de Planilla. La raíz del servicio debe ser la carpeta que contiene Dockerfile y requirements.txt.
 2. Seleccionar construcción mediante el Dockerfile incluido. El contenedor escucha en el PORT que asigna Railway.
 3. Adjuntar un volumen en **/data**. Mantener una sola réplica para esta versión basada en SQLite y procesamiento PDF secuencial.

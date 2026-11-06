@@ -15,7 +15,7 @@ import ssl
 import time
 from email.message import EmailMessage
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
@@ -23,6 +23,7 @@ DAY = 86400
 PRICE_ARS = 2990
 MAX_PAID_PAGES = 5
 FREE_MAX_PAGES = 2
+TEST_EMAIL_RETENTION = 15 * 60
 ORDER_API = "https://api.mercadopago.com/v1/orders"
 REASONS = {
     "bad_filled_card_data": "Revisá los datos de la tarjeta e intentá de nuevo.",
@@ -75,7 +76,14 @@ class Commerce:
         self.access_token = os.environ.get("MERCADOPAGO_ACCESS_TOKEN", "")
         self.webhook_secret = os.environ.get("MERCADOPAGO_WEBHOOK_SECRET", "")
         self.collector = os.environ.get("MERCADOPAGO_COLLECTOR_ID", "")
-        self.production = os.environ.get("APP_ENV", "").lower() == "production"
+        environment = os.environ.get("APP_ENV", "").lower()
+        self.production = environment == "production"
+        test_email = os.environ.get("PLANILLA_TEST_EMAIL", "0")
+        if test_email not in {"0", "1"}:
+            raise RuntimeError("PLANILLA_TEST_EMAIL debe ser 0 o 1.")
+        if test_email == "1" and environment != "test":
+            raise RuntimeError("La bandeja de pruebas requiere APP_ENV=test.")
+        self.test_email_enabled = test_email == "1"
         with self._db() as db:
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS people (
@@ -94,6 +102,9 @@ class Commerce:
                     digest TEXT PRIMARY KEY, session TEXT NOT NULL, job TEXT NOT NULL,
                     email TEXT NOT NULL, created REAL NOT NULL, verified REAL,
                     purpose TEXT NOT NULL DEFAULT 'verify');
+                CREATE TABLE IF NOT EXISTS test_mail (
+                    id INTEGER PRIMARY KEY, recipient TEXT NOT NULL, subject TEXT NOT NULL,
+                    text TEXT NOT NULL, verification_url TEXT NOT NULL, created REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS orders (
                     reference TEXT PRIMARY KEY, job TEXT NOT NULL, provider_id TEXT UNIQUE,
                     checkout_url TEXT, state TEXT NOT NULL, detail TEXT, created REAL NOT NULL,
@@ -116,6 +127,7 @@ class Commerce:
                 JOIN people ON people.email=sessions.email AND people.verified=1
                 WHERE sessions.id=jobs.session) WHERE owner_email IS NULL""")
             db.execute("CREATE INDEX IF NOT EXISTS jobs_by_owner ON jobs(owner_email,created)")
+            self._clean_test_mail(db)
 
     def _db(self):
         db = sqlite3.connect(self.database, timeout=10, factory=_Connection)
@@ -254,6 +266,8 @@ class Commerce:
         elif not person or not person["verified"]:
             state = "email_pending" if row["email_sent"] and row["email_sent"] > now - 900 else "needs_email"
             message = "Te enviamos un enlace. Confirmá tu correo para continuar. Tu gratuito sigue disponible." if state == "email_pending" else "Ingresá tu correo para descargar y recuperar este trabajo."
+            if state == "email_pending" and self.test_email_enabled:
+                message = "El enlace está en la bandeja de pruebas del administrador. No se envió un correo real. Tu gratuito sigue disponible."
         elif order and order["state"] in {"creating", "created", "processing", "action_required", "processed"}:
             state, message = "payment_pending", "El pago está pendiente. Tu trabajo está guardado. Evitá pagar otra vez mientras lo confirmamos."
         elif order and order["state"] in {"failed", "canceled"}:
@@ -268,7 +282,9 @@ class Commerce:
             "prepared": ready, "email": person["email"] if person else None,
             "emailVerified": bool(person and person["verified"]), "price": {"amount": PRICE_ARS, "currency": "ARS"},
             "downloadUrl": f"/api/jobs/{job}/download" if state == "download_ready" else None,
-            "checkoutUrl": order["checkout_url"] if order and state == "payment_pending" else None,
+            "checkoutUrl": order["checkout_url"] if order and state == "payment_pending"
+                and self._payment_environment_matches(order["provider_id"])
+                and self._checkout_url_matches(order["provider_id"], order["checkout_url"]) else None,
             "expiresAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(row["expires"])),
             "reasonCode": order["detail"] if order else None, "claimStatus": claim["state"] if claim else None,
             "canClaim": bool(grant == "paid" and row["expires"] > now and not claim),
@@ -285,12 +301,33 @@ class Commerce:
             raise CommerceError("Ingresá un correo válido.", 400, "invalid_email")
         return value
 
-    def _mail(self, email, token):
+    def _clean_test_mail(self, db):
+        if self.test_email_enabled:
+            db.execute("DELETE FROM test_mail WHERE created<=?", (self.clock() - TEST_EMAIL_RETENTION,))
+            db.execute("DELETE FROM test_mail WHERE id NOT IN (SELECT id FROM test_mail ORDER BY id DESC LIMIT 100)")
+        else:
+            db.execute("DELETE FROM test_mail")
+
+    def test_mailbox(self):
+        if not self.test_email_enabled:
+            raise CommerceError("La bandeja de pruebas no está habilitada.", 404, "test_mailbox_disabled")
+        with self._db() as db:
+            self._clean_test_mail(db)
+            messages = [dict(row) for row in db.execute("""SELECT id,recipient AS 'to',subject,text,
+                verification_url AS verificationUrl,created FROM test_mail ORDER BY id DESC LIMIT 100""")]
+        return {"enabled": True, "retentionSeconds": TEST_EMAIL_RETENTION, "messages": messages}
+
+    def _mail(self, email, token, db):
         link = self.base_url + "/verify?" + urlencode({"token": token})
         subject = "Tu enlace para continuar en Planilla"
         text = ("Confirmá tu correo y recuperá tu trabajo en Planilla:\n\n" + link +
                 "\n\nLa primera confirmación vence en 15 minutos. Después podés recuperar el trabajo durante 7 días."
                 "\nConfirmar el correo no consume la descarga gratuita.")
+        if self.test_email_enabled:
+            db.execute("INSERT INTO test_mail(recipient,subject,text,verification_url,created) VALUES(?,?,?,?,?)",
+                       (email, "Prueba · " + subject, "PRUEBA: no se envió un correo real.\n\n" + text, link, self.clock()))
+            self._clean_test_mail(db)
+            return
         key = os.environ.get("RESEND_API_KEY", "")
         sender = os.environ.get("EMAIL_FROM", os.environ.get("SMTP_USERNAME", ""))
         if key and sender:
@@ -333,7 +370,7 @@ class Commerce:
                 raise CommerceError("Este trabajo está vinculado a otro correo. Recuperalo con ese correo o abrí una sesión nueva.",
                                     409, "email_mismatch")
             token = self._new_token(db, session, job, email)
-            self._mail(email, token)
+            self._mail(email, token, db)
             db.execute("UPDATE jobs SET email_sent=? WHERE id=?", (self.clock(), job))
             self._event(db, "email_requested", session, job)
         return self.status(session, job)
@@ -383,11 +420,11 @@ class Commerce:
                 try:
                     token = self._new_token(db, row["session"], row["id"], email,
                                             purpose="recover" if row["owner_email"] else "verify")
-                    self._mail(email, token)
+                    self._mail(email, token, db)
                 except CommerceError as error:
                     if error.status != 429:
                         raise
-        return {"message": "Si hay un trabajo disponible para ese correo, recibirás un enlace para recuperarlo."}
+        return {"message": "Si hay un trabajo disponible para ese correo, su enlace estará en la bandeja de pruebas del administrador. No se envió un correo real." if self.test_email_enabled else "Si hay un trabajo disponible para ese correo, recibirás un enlace para recuperarlo."}
 
     def claim_free(self, session, job):
         with self._db() as db:
@@ -438,6 +475,30 @@ class Commerce:
             headers["X-Idempotency-Key"] = idempotency
         return headers
 
+    def _payment_environment_matches(self, identifier, live_mode=None):
+        if not isinstance(identifier, str):
+            return False
+        test_order = identifier.startswith("ORDTST")
+        return (test_order != self.production
+                and (live_mode if isinstance(live_mode, bool) else not test_order) == self.production)
+
+    def _require_payment_environment(self, identifier, live_mode=None):
+        if not self._payment_environment_matches(identifier, live_mode):
+            raise CommerceError("No pudimos abrir el pago con la configuración actual. Tu trabajo está guardado.",
+                                502, "payment_environment_mismatch")
+
+    @staticmethod
+    def _checkout_url_matches(identifier, url):
+        if not isinstance(url, str):
+            return False
+        try:
+            parsed = urlsplit(url)
+            return (parsed.scheme == "https" and parsed.hostname == "www.mercadopago.com.ar"
+                    and not parsed.username and not parsed.password and parsed.port in (None, 443)
+                    and parse_qs(parsed.query).get("order_id") == [identifier])
+        except ValueError:
+            return False
+
     def checkout(self, session, job):
         if not self.webhook_secret:
             raise CommerceError("Los pagos todavía no están habilitados. Tu trabajo está guardado.", 503, "payment_unconfigured")
@@ -457,6 +518,9 @@ class Commerce:
             if previous and previous["state"] not in {"failed", "canceled", "refunded"}:
                 reference, idempotency = previous["reference"], previous["idempotency"]
                 if previous["checkout_url"]:
+                    self._require_payment_environment(previous["provider_id"])
+                    if not self._checkout_url_matches(previous["provider_id"], previous["checkout_url"]):
+                        raise CommerceError("Mercado Pago no devolvió un enlace válido. Tu trabajo está guardado.", 502, "invalid_checkout")
                     return {**self.status(session, job), "checkoutUrl": previous["checkout_url"], "orderId": previous["provider_id"]}
             else:
                 reference, idempotency = uuid4().hex, uuid4().hex
@@ -473,9 +537,9 @@ class Commerce:
         })
         provider_id, checkout_url = result.get("id"), result.get("checkout_url")
         if (not isinstance(provider_id, str) or not re.fullmatch(r"[A-Za-z0-9]{8,100}", provider_id)
-                or not isinstance(checkout_url, str) or urlsplit(checkout_url).scheme != "https"
-                or urlsplit(checkout_url).hostname != "www.mercadopago.com.ar"):
+                or not self._checkout_url_matches(provider_id, checkout_url)):
             raise CommerceError("Mercado Pago no devolvió un enlace válido. Tu trabajo está guardado.", 502, "invalid_checkout")
+        self._require_payment_environment(provider_id, result.get("live_mode"))
         with self._db() as db:
             db.execute("UPDATE orders SET provider_id=?,checkout_url=?,state='created' WHERE reference=? AND state='creating'",
                        (provider_id, checkout_url, reference))
@@ -544,12 +608,10 @@ class Commerce:
                 paid_amount = Decimal(str(result.get("total_paid_amount", "0")))
             except (InvalidOperation, TypeError) as error:
                 raise CommerceError("La orden recibida tiene un importe inválido.", 400, "order_mismatch") from error
-            live = result.get("live_mode")
-            inferred_live = not str(result.get("id", "")).startswith("ORDTST")
             if (result.get("id") != local["provider_id"] or result.get("external_reference") != reference
                     or not valid_amount or result.get("currency") != "ARS"
                     or str(result.get("user_id")) != str(self.collector)
-                    or (live if isinstance(live, bool) else inferred_live) != self.production):
+                    or not self._payment_environment_matches(result.get("id"), result.get("live_mode"))):
                 raise CommerceError("La orden recibida no coincide con la compra.", 400, "order_mismatch")
             state, detail = result.get("status"), result.get("status_detail")
             if state not in {"created", "processed", "action_required", "failed", "processing", "refunded", "canceled"}:
@@ -644,3 +706,4 @@ class Commerce:
                     shutil.rmtree(directory)
             db.execute("DELETE FROM email_tokens WHERE created<?", (now - 7 * DAY,))
             db.execute("DELETE FROM events WHERE created<?", (now - 90 * DAY,))
+            self._clean_test_mail(db)

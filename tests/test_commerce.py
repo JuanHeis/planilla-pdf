@@ -56,6 +56,7 @@ class CommerceTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.env = patch.dict(os.environ, {
             "PUBLIC_BASE_URL": "https://planilla.example", "APP_ENV": "test",
+            "PLANILLA_TEST_EMAIL": "0",
             "MERCADOPAGO_ACCESS_TOKEN": "test-token", "MERCADOPAGO_WEBHOOK_SECRET": "test-secret",
             "MERCADOPAGO_COLLECTOR_ID": "12345", "RESEND_API_KEY": "test-email-key",
             "EMAIL_FROM": "Planilla <test@example.com>", "SMTP_USERNAME": "", "SMTP_PASSWORD": "",

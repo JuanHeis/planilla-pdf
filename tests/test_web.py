@@ -54,6 +54,7 @@ class HostedWebTest(unittest.TestCase):
         self.env = patch.dict(os.environ, {
             "PUBLIC_BASE_URL": "http://127.0.0.1:8780", "PLANILLA_DATA_DIR": self.temp.name,
             "APP_ENV": "test", "RESEND_API_KEY": "offline", "EMAIL_FROM": "Planilla <test@example.test>",
+            "PLANILLA_TEST_EMAIL": "0",
             "MERCADOPAGO_ACCESS_TOKEN": "offline", "MERCADOPAGO_WEBHOOK_SECRET": "offline-secret",
             "MERCADOPAGO_COLLECTOR_ID": "12345", "ADMIN_TOKEN": "offline-admin",
         })

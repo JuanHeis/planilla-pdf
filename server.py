@@ -17,7 +17,7 @@ import webbrowser
 
 from flask import Flask, g, jsonify, redirect, request, send_file
 from werkzeug.exceptions import HTTPException
-from werkzeug.serving import make_server
+from werkzeug.serving import make_server, WSGIRequestHandler
 
 import pymupdf
 
@@ -32,6 +32,12 @@ MAX_PDF = 20 * 1024 * 1024
 MAX_JSON = 2 * 1024 * 1024
 DOCUMENT_TTL = 30 * 60
 documents = OrderedDict()
+
+
+class PrivateRequestHandler(WSGIRequestHandler):
+    def log_request(self, *args, **kwargs):
+        # Verification URLs are credentials, so local QA must not log access lines.
+        pass
 
 
 def demo_pdf():
@@ -74,6 +80,14 @@ def create_app(*, mode=None, commerce_service=None, usage_meter=None, field_lear
     if chosen_mode not in {"local", "web"}:
         raise RuntimeError("PLANILLA_MODE debe ser local o web.")
     web = chosen_mode == "web"
+    test_mode = os.environ.get("APP_ENV", "").lower() == "test"
+    test_email = os.environ.get("PLANILLA_TEST_EMAIL", "0")
+    if test_email not in {"0", "1"}:
+        raise RuntimeError("PLANILLA_TEST_EMAIL debe ser 0 o 1.")
+    if test_email == "1" and not test_mode:
+        raise RuntimeError("La bandeja de pruebas requiere APP_ENV=test.")
+    if test_email == "1" and not os.environ.get("ADMIN_TOKEN"):
+        raise RuntimeError("Configurá ADMIN_TOKEN para la bandeja privada de pruebas.")
     public = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
     parsed = urlsplit(public)
     if web and (parsed.scheme not in {"https", "http"} or not parsed.netloc or parsed.path
@@ -88,6 +102,8 @@ def create_app(*, mode=None, commerce_service=None, usage_meter=None, field_lear
     if web and shop is None:
         from commerce import Commerce
         shop = Commerce(data_dir=data_dir)
+    if web and getattr(shop, "test_email_enabled", False) and not test_mode:
+        raise RuntimeError("La bandeja de pruebas requiere APP_ENV=test.")
     app.extensions["commerce"] = shop
     app.extensions["usage_meter"] = meter
     app.extensions["field_learner"] = learner
@@ -294,12 +310,14 @@ def create_app(*, mode=None, commerce_service=None, usage_meter=None, field_lear
     @app.get("/api/config")
     def config():
         sender = os.environ.get("EMAIL_FROM", os.environ.get("SMTP_USERNAME", ""))
+        test_email_enabled = bool(web and test_mode and getattr(shop, "test_email_enabled", False))
         return jsonify(commercial=web, price=2990, currency="ARS", maxPages=5, freeMaxPages=2,
+                       testMode=bool(web and test_mode), testEmailEnabled=test_email_enabled,
                        sourceUrl="/source", supportEmail=os.environ.get("SUPPORT_EMAIL", ""),
                        paymentsConfigured=bool(os.environ.get("MERCADOPAGO_ACCESS_TOKEN") and
                                                os.environ.get("MERCADOPAGO_COLLECTOR_ID") and
                                                os.environ.get("MERCADOPAGO_WEBHOOK_SECRET")),
-                       emailConfigured=bool(sender and (os.environ.get("RESEND_API_KEY") or
+                       emailConfigured=bool(test_email_enabled or sender and (os.environ.get("RESEND_API_KEY") or
                                             (os.environ.get("SMTP_USERNAME") and os.environ.get("SMTP_PASSWORD")))))
 
     @app.get("/demo.pdf")
@@ -510,6 +528,12 @@ def create_app(*, mode=None, commerce_service=None, usage_meter=None, field_lear
     def metrics():
         return jsonify(shop.metrics())
 
+    @app.get("/api/admin/test-mailbox")
+    @hosted_only
+    @admin_only
+    def test_mailbox():
+        return jsonify(shop.test_mailbox())
+
     @app.get("/api/admin/claims")
     @hosted_only
     @admin_only
@@ -683,7 +707,7 @@ if __name__ == "__main__":
     parser.add_argument("--open", action="store_true", help="Abrir el navegador")
     options = parser.parse_args()
     host = "0.0.0.0" if os.environ.get("PLANILLA_MODE") == "web" else "127.0.0.1"
-    with make_server(host, options.port, app, threaded=False) as server:
+    with make_server(host, options.port, app, threaded=False, request_handler=PrivateRequestHandler) as server:
         url = f"http://127.0.0.1:{server.server_port}"
         print(f"Editor disponible en {url}", flush=True)
         if options.open:

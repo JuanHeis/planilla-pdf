@@ -24,6 +24,7 @@ class LearningWebTests(unittest.TestCase):
         self.env = patch.dict(os.environ, {
             "PUBLIC_BASE_URL": "http://127.0.0.1:8780", "PLANILLA_DATA_DIR": self.directory.name,
             "APP_ENV": "test", "PLANILLA_BACKGROUND_CLEANUP": "0", "ADMIN_TOKEN": "offline-admin",
+            "PLANILLA_TEST_EMAIL": "0",
             "RESEND_API_KEY": "offline", "EMAIL_FROM": "test@example.test",
             "SMTP_USERNAME": "", "SMTP_PASSWORD": "",
             "MERCADOPAGO_ACCESS_TOKEN": "offline", "MERCADOPAGO_WEBHOOK_SECRET": "offline-secret",
