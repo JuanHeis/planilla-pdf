@@ -73,6 +73,21 @@ def read_json():
     return value
 
 
+def _fields_fingerprint(fields):
+    def canonical(value):
+        # JavaScript has one JSON number type: 49.0 returns as 49.
+        if isinstance(value, float) and value.is_integer():
+            return int(value)
+        if isinstance(value, dict):
+            return {key: canonical(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [canonical(item) for item in value]
+        return value
+
+    return sha256(json.dumps(canonical(fields), sort_keys=True, ensure_ascii=False,
+                             separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+
+
 def create_app(*, mode=None, commerce_service=None, usage_meter=None, field_learner=None):
     app = Flask(__name__, static_folder=str(ROOT / "static"))
     app.config["MAX_CONTENT_LENGTH"] = MAX_PDF
@@ -173,18 +188,29 @@ def create_app(*, mode=None, commerce_service=None, usage_meter=None, field_lear
     def prepare_hosted(job, data, fields):
         meta = json.loads(metadata_path(job).read_text(encoding="utf-8"))
         measure_document(job, len(meta["pages"]), len(fields))
-        fingerprint = sha256(json.dumps(fields, sort_keys=True, ensure_ascii=False,
-                                        separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+        fingerprint = _fields_fingerprint(fields)
+        previous_fields = meta.get("fields", [])
+        same_fields = _fields_fingerprint(previous_fields) == fingerprint
+        legacy = sha256(json.dumps(previous_fields, sort_keys=True, ensure_ascii=False,
+                                   separators=(",", ":"), allow_nan=False).encode()).hexdigest() if same_fields else None
+
+        def matches(stored):
+            # Old metadata hashed Python's float spelling; bind the fallback to
+            # all persisted field values, never merely their geometry.
+            return stored == fingerprint or (same_fields and stored == legacy)
+
         final = job_dir(job) / "final.pdf"
         # Reuse the prepared bytes: PDF serialization generates a fresh document ID.
-        if meta.get("preparedFieldsDigest") == fingerprint and final.is_file():
+        if matches(meta.get("preparedFieldsDigest")) and final.is_file():
             output = final.read_bytes()
         else:
             output = export_pdf(data, fields)
         status = shop.prepare(g.sid, job, output,
                               original=not fields and bool(meta.get("existingFields")))
+        if meta.get("initialFieldsDigest") and matches(meta["initialFieldsDigest"]):
+            meta = {**meta, "initialFieldsDigest": fingerprint}
         corrected = meta.get("correctionMarked", False)
-        if not corrected and meta.get("initialFieldsDigest") and meta["initialFieldsDigest"] != fingerprint:
+        if not corrected and meta.get("initialFieldsDigest") and not matches(meta["initialFieldsDigest"]):
             emit("corrected", job)
             corrected = True
         save_metadata(job, {**meta, "fields": fields, "preparedFieldsDigest": fingerprint,
@@ -378,8 +404,7 @@ def create_app(*, mode=None, commerce_service=None, usage_meter=None, field_lear
             folder = job_dir(key)
             folder.mkdir(parents=True, exist_ok=False)
             (folder / "original.pdf").write_bytes(data)
-            initial_digest = sha256(json.dumps(result["fields"], sort_keys=True, ensure_ascii=False,
-                                               separators=(",", ":")).encode()).hexdigest()
+            initial_digest = _fields_fingerprint(result["fields"])
             save_metadata(key, {**meta, "initialFieldsDigest": initial_digest})
             try:
                 shop.register_job(g.sid, key, len(result["pages"]), len(result.get("existingFields", [])))
