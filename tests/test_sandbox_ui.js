@@ -16,6 +16,8 @@ class Element {
   querySelectorAll() { return []; }
   showModal() { this.open = true; }
   close() { this.open = false; }
+  click() {}
+  remove() {}
   focus() {}
 }
 
@@ -30,7 +32,7 @@ function surface(file, script, extras = {}) {
     dispatchEvent(event) { return listeners[event.type]?.(event); },
   };
   const context = vm.createContext({
-    window, document: { getElementById: (id) => nodes[id], createElement: (tag) => new Element(tag), addEventListener() {} },
+    window, document: { getElementById: (id) => nodes[id], createElement: (tag) => new Element(tag), body: new Element("body"), addEventListener() {} },
     URL, Intl, Date, Number, JSON, Boolean, String, Error,
     Event: class { constructor(type) { this.type = type; } },
     CustomEvent: class { constructor(type, detail) { this.type = type; this.detail = detail?.detail; } },
@@ -73,6 +75,36 @@ async function checkoutChecks() {
   await ui.window.PlanillaCheckout.open(pdf, false);
   assert.equal(ui.nodes["download-test-notice"].hidden, true);
   assert.match(ui.nodes["download-detail"].textContent, /Correo no deseado/);
+}
+
+async function freeReadyChecks() {
+  for (const testMode of [false, true]) {
+    let status;
+    const ui = surface("index.html", "checkout.js", { fetch: async (url) => url.endsWith("/download")
+      ? { ok: true, blob: async () => new Blob(["synthetic PDF"]) }
+      : { ok: true, json: async () => status } });
+    const pdf = { documentId: "synthetic-free-job", fields: [], pages: [{}] };
+    ui.window.PlanillaCheckout.configure({ commercial: true, testMode, testEmailEnabled: testMode, emailConfigured: true, paymentsConfigured: true });
+    status = { state: "download_ready", grantKind: "free_pending", quotaConsumed: false, message: "Tu PDF está listo, sin otro cobro." };
+    await ui.window.PlanillaCheckout.open(pdf, false);
+    assert.match(ui.nodes["download-status"].textContent, /Todavía no se consumió/);
+    assert.match(ui.nodes["download-detail"].textContent, /al iniciar la descarga/);
+    assert.doesNotMatch(ui.nodes["download-detail"].textContent, /pagar|cobro/);
+    await ui.nodes["download-file"].events.click();
+    assert.match(ui.nodes["download-status"].textContent, /fue descargado/);
+    assert.match(ui.nodes["download-status"].textContent, /ya usó tu descarga gratis/);
+    assert.match(ui.nodes["download-detail"].textContent, /no consume otra conversión/);
+    assert.doesNotMatch(ui.nodes["download-detail"].textContent, /Se usará/);
+    status = { state: "download_ready", grantKind: "free", quotaConsumed: true, message: "Tu PDF está listo, sin otro cobro." };
+    await ui.window.PlanillaCheckout.open(pdf, false);
+    assert.match(ui.nodes["download-status"].textContent, /ya usó tu descarga gratis/);
+    assert.match(ui.nodes["download-detail"].textContent, /no consume otra conversión/);
+    assert.doesNotMatch(ui.nodes["download-status"].textContent + ui.nodes["download-detail"].textContent, /pagar|cobro|Todavía no se consumió/);
+    status = { state: "download_ready", grantKind: "paid", quotaConsumed: false, message: "Tu PDF está listo, sin otro cobro." };
+    await ui.window.PlanillaCheckout.open(pdf, false);
+    assert.equal(ui.nodes["download-status"].textContent, status.message, "Paid backend message stays unchanged");
+    assert.match(ui.nodes["download-detail"].textContent, /sin pagar otra vez/);
+  }
 }
 
 async function mailboxChecks() {
@@ -174,6 +206,7 @@ async function adminLogoutChecks() {
 
 (async () => {
   await checkoutChecks();
+  await freeReadyChecks();
   await mailboxChecks();
   await adminLogoutChecks();
   console.log("Sandbox UI checks passed: test/prod copy, email readiness, entitlement display, scoped links and logout races.");

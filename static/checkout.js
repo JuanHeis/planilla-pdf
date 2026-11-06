@@ -28,6 +28,7 @@ window.PlanillaCheckout = (() => {
   const testMode = () => config.testMode === true;
   const testMail = () => testMode() && config.testEmailEnabled === true;
   const emailReady = () => config.emailConfigured === true || testMail();
+  const freeDownloadedDetail = "Podés volver a descargar este mismo PDF mientras siga disponible. Esta descarga no consume otra conversión. Abrí la copia descargada para completar los campos.";
 
   async function request(url, data) {
     const response = await fetch(url, data === undefined ? undefined : {
@@ -111,9 +112,16 @@ window.PlanillaCheckout = (() => {
         ? "Mercado Pago no aprobó este pago de prueba. El motivo aparece arriba. Podés comprobar el estado o iniciar un nuevo intento con otro resultado de prueba."
         : "Mercado Pago no confirmó este pago. Revisá el medio de pago e intentá nuevamente. Si ves un cargo en tu cuenta, comprobá el estado antes de volver a pagar.";
     } else if (ready) {
-      nodes["download-detail"].textContent = status.grantKind === "original"
-        ? "El original ya era rellenable. Podés descargarlo gratis. Esta descarga no consume una conversión."
-        : "Podés volver a descargar este mismo trabajo sin pagar otra vez mientras siga disponible. Abrí la copia descargada para completar los campos.";
+      if (status.grantKind === "original") {
+        nodes["download-detail"].textContent = "El original ya era rellenable. Podés descargarlo gratis. Esta descarga no consume una conversión.";
+      } else if (["free_pending", "free"].includes(status.grantKind)) {
+        message(status.quotaConsumed ? "Este trabajo ya usó tu descarga gratis." : "Tu descarga gratis está lista. Todavía no se consumió.");
+        nodes["download-detail"].textContent = status.quotaConsumed
+          ? freeDownloadedDetail
+          : "Se usará al iniciar la descarga del PDF. Si la conexión falla, podés reintentar este mismo trabajo sin consumir otra conversión.";
+      } else {
+        nodes["download-detail"].textContent = "Podés volver a descargar este mismo trabajo sin pagar otra vez mientras siga disponible. Abrí la copia descargada para completar los campos.";
+      }
     } else if (state === "expired") {
       nodes["download-detail"].textContent = testMode()
         ? "El plazo de este trabajo de prueba terminó y sus archivos se borraron. Podés abrir el PDF otra vez para iniciar otro ensayo."
@@ -233,11 +241,13 @@ window.PlanillaCheckout = (() => {
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
     downloaded = true;
+    const freeDownload = ["free_pending", "free"].includes(current.grantKind);
+    if (freeDownload) nodes["download-detail"].textContent = freeDownloadedDetail;
     nodes["download-success"].hidden = false;
     nodes["download-success"].textContent = current.emailVerified
       ? testMail() ? "Guardá la copia en tu equipo. Para recuperar esta prueba, generá un enlace y abrilo desde la bandeja privada del administrador." : "Guardá la copia en tu equipo. También podés recuperarla con el enlace de tu correo."
       : "Guardá la copia en tu equipo para volver a usarla cuando la necesites.";
-    message("Tu PDF fue descargado. Podés abrirlo para completar los campos.");
+    message(freeDownload ? "Tu PDF fue descargado. Este trabajo ya usó tu descarga gratis." : "Tu PDF fue descargado. Podés abrirlo para completar los campos.");
     window.dispatchEvent(new CustomEvent("planilla:downloaded", { detail: { recoveryAvailable: Boolean(current.emailVerified) } }));
   }
   nodes["download-file"].addEventListener("click", () => action(downloadFile));
