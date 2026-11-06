@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Planilla · Editor de formularios PDF</title>
   <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/checkout.js" defer></script>
   <script src="/static/app.js" defer></script>
 </head>
 <body>
@@ -28,6 +29,7 @@
       <span>Planilla<span class="brand-caption">Editor PDF</span></span>
     </div>
     <div id="editor-actions" class="top-actions" hidden>
+      <button class="button secondary" id="download-original" type="button" hidden>Original gratis</button>
       <button class="button secondary" id="change-file" type="button">Cambiar PDF</button>
       <button class="button primary" id="export" type="button"><svg class="icon"><use href="#i-download"/></svg><span>Descargar PDF</span></button>
     </div>
@@ -39,13 +41,14 @@
     <section id="welcome" class="welcome" aria-labelledby="welcome-title">
       <div class="welcome-body">
         <h1 id="welcome-title">Hacé rellenable<br>tu formulario PDF</h1>
-        <p class="intro">Subí un formulario, revisá los campos sugeridos y descargá un PDF que se pueda completar.</p>
+        <p class="intro">Subí tu formulario, revisá los campos y descargá un PDF que se pueda completar.</p>
+        <p id="service-offer" class="service-offer" hidden>Revisar es gratis. Tu primera conversión de hasta 2 páginas también. Después, ARS 2.990 por PDF de hasta 5 páginas.</p>
         <div id="drop-zone" class="drop-zone">
           <button class="button primary" id="pick-file" type="button"><svg class="icon"><use href="#i-upload"/></svg> Elegir PDF</button>
           <span>También podés arrastrarlo acá</span>
         </div>
         <button class="text-button" id="demo" type="button">Probar con un ejemplo <svg class="icon"><use href="#i-right"/></svg></button>
-        <p><a class="text-button" href="/static/ocr.html">Revisar y corregir el OCR <svg class="icon" aria-hidden="true"><use href="#i-right"/></svg></a></p>
+        <p id="local-ocr-link"><a class="text-button" href="/static/ocr.html">Revisar y corregir el OCR <svg class="icon" aria-hidden="true"><use href="#i-right"/></svg></a></p>
       </div>
       <figure class="example">
         <div class="illustration" aria-hidden="true">
@@ -122,6 +125,50 @@
       </div>
     </section>
   </main>
-  <footer class="footer"><svg class="icon"><use href="#i-lock"/></svg> Tus archivos se procesan en esta computadora.</footer>
+  <footer class="footer">
+    <span id="processing-place"><svg class="icon"><use href="#i-lock"/></svg> Tus archivos se procesan en esta computadora.</span>
+    <button id="open-recovery" class="text-button" type="button" hidden>Recuperar una descarga</button>
+    <a href="/source" class="source-link">Código fuente · AGPL</a>
+  </footer>
+  <dialog id="download-dialog" class="download-dialog" aria-labelledby="download-title">
+    <div class="dialog-heading"><h2 id="download-title">Preparando tu descarga</h2><button id="download-close" class="button secondary" type="button" aria-label="Cerrar opciones de descarga">Cerrar</button></div>
+    <div id="download-status" class="dialog-status" role="status" aria-live="polite"></div>
+    <p id="download-detail" class="dialog-detail"></p>
+    <p id="download-price" class="download-price" hidden></p>
+    <form id="download-email-form" class="download-form" hidden>
+      <label for="download-email">Tu correo electrónico</label>
+      <input id="download-email" type="email" maxlength="254" autocomplete="email" required placeholder="nombre@correo.com">
+      <button id="download-email-button" class="button primary" type="submit">Enviar enlace para confirmar</button>
+    </form>
+    <div class="download-actions">
+      <button id="download-free" class="button primary" type="button" hidden>Descargar gratis</button>
+      <button id="download-pay" class="button primary" type="button" hidden>Pagar con Mercado Pago</button>
+      <button id="download-file" class="button primary" type="button" hidden>Descargar PDF</button>
+      <button id="download-retry" class="button secondary" type="button" hidden>Comprobar estado y reintentar</button>
+    </div>
+    <p id="download-success" class="download-success" hidden>Guardá la copia en tu equipo. También podés recuperarla con el enlace de tu correo.</p>
+    <button id="download-edit" class="text-button" type="button">Volver al editor para corregir</button>
+    <form id="download-claim-form" class="claim-form" hidden>
+      <h3>¿El resultado no te sirvió?</h3>
+      <label for="download-claim-reason">Contanos qué salió mal para revisar tu pedido</label>
+      <textarea id="download-claim-reason" rows="3" minlength="10" maxlength="1000" required></textarea>
+      <button id="download-claim-button" class="button secondary" type="submit">Pedir revisión y devolución</button>
+    </form>
+    <a id="download-contact" class="dialog-contact" hidden>Necesito ayuda con mi descarga</a>
+  </dialog>
+  <dialog id="recovery-dialog" class="download-dialog" aria-labelledby="recovery-title">
+    <div class="dialog-heading"><h2 id="recovery-title">Recuperá tu descarga</h2><button id="recovery-close" class="button secondary" type="button">Cerrar</button></div>
+    <p id="recovery-status" class="dialog-detail" role="status" aria-live="polite"></p>
+    <section id="recovery-jobs" class="recovery-jobs" aria-labelledby="recovery-jobs-title" hidden>
+      <h3 id="recovery-jobs-title">Tus trabajos disponibles</h3>
+      <ul id="recovery-job-list"></ul>
+    </section>
+    <button id="recovery-other" class="text-button" type="button" hidden>Buscar con otro correo</button>
+    <form id="recovery-form" class="download-form">
+      <label for="recovery-email">Correo de tu compra o descarga gratis</label>
+      <input id="recovery-email" type="email" maxlength="254" autocomplete="email" required>
+      <button id="recovery-send" class="button primary" type="submit">Enviar enlace de recuperación</button>
+    </form>
+  </dialog>
 </body>
 </html>

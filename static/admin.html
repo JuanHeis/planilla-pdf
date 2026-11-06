@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Planilla · Actividad</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/admin.css">
+  <script src="/static/admin.js" defer></script>
+</head>
+<body>
+  <header class="topbar"><a class="admin-brand" href="/">Planilla</a><span>Actividad del servicio</span></header>
+  <main class="admin-main">
+    <section aria-labelledby="access-title" id="admin-access">
+      <h1 id="access-title">Consultá cómo va Planilla</h1>
+      <p class="admin-intro">Este panel muestra el uso de los últimos 30 días, los cobros y los reclamos pendientes.</p>
+      <form id="admin-login" class="admin-login">
+        <label for="admin-token">Clave de administración</label>
+        <input id="admin-token" type="password" autocomplete="off" required>
+        <button class="button primary" type="submit">Abrir actividad</button>
+      </form>
+      <p class="admin-hint">La clave se usa mientras esta pestaña está abierta. La encontrás como ADMIN_TOKEN en las variables de tu alojamiento.</p>
+    </section>
+    <div id="admin-status" class="admin-status" role="status" aria-live="polite" hidden></div>
+    <section id="admin-report" hidden aria-labelledby="report-title">
+      <div class="admin-report-title"><div><h1 id="report-title">Actividad de los últimos 30 días</h1><p id="admin-updated"></p></div><div class="admin-buttons"><button id="admin-refresh" class="button secondary" type="button">Actualizar</button><button id="admin-logout" class="text-button" type="button">Cerrar acceso</button></div></div>
+      <dl id="admin-summary" class="admin-summary"></dl>
+      <h2>Del primer intento a la descarga</h2>
+      <p class="admin-intro">Los eventos muestran actividad. Una persona puede generar varios intentos o descargas.</p>
+      <div class="admin-table-wrap"><table><thead><tr><th scope="col">Paso</th><th scope="col">Cantidad</th></tr></thead><tbody id="admin-funnel"></tbody></table></div>
+      <h2>Actividad por día</h2>
+      <div class="admin-table-wrap"><table><thead><tr><th scope="col">Día</th><th scope="col">Análisis</th><th scope="col">Gratis habilitados</th><th scope="col">Pagos aprobados</th></tr></thead><tbody id="admin-daily"></tbody></table></div>
+      <section class="admin-claims" aria-labelledby="claims-title"><h2 id="claims-title">Reclamos</h2><p class="admin-intro">Revisá el motivo y la orden antes de solicitar una devolución. Mercado Pago puede demorar la acreditación según el medio de pago.</p><div id="admin-claims"></div></section>
+    </section>
+  </main>
+  <dialog id="refund-dialog" class="download-dialog" aria-labelledby="refund-title">
+    <div class="dialog-heading"><h2 id="refund-title">Confirmar devolución</h2></div>
+    <p id="refund-details" class="dialog-detail"></p>
+    <p>La devolución se solicita a Mercado Pago. El plazo de acreditación depende del medio de pago.</p>
+    <p id="refund-status" class="admin-status" role="status" aria-live="polite" hidden></p>
+    <div class="download-actions"><button id="refund-confirm" class="button primary" type="button">Confirmar devolución</button><button id="refund-cancel" class="button secondary" type="button">Volver sin devolver</button></div>
+  </dialog>
+</body>
+</html>

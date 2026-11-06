@@ -1,0 +1,24 @@
+.admin-brand{color:var(--accent);font-size:1.25rem;font-weight:700;text-decoration:none}
+.admin-main{width:min(1000px,calc(100% - 36px));margin:32px auto 60px}
+.admin-main h1{font-size:1.85rem;line-height:1.15;letter-spacing:-.025em;max-width:24ch}
+.admin-main h2{font-size:1.2rem;line-height:1.25;margin:27px 0 8px}
+.admin-intro{color:var(--muted);margin:10px 0 18px;max-width:70ch}
+.admin-login{display:grid;gap:8px;max-width:430px;margin:24px 0 10px}
+.admin-login label{font-size:.9rem;font-weight:600}
+.admin-login input{border:1px solid #9cb2ad;border-radius:6px;min-height:43px;padding:9px 11px;background:var(--white);color:var(--ink)}
+.admin-hint{font-size:.84rem;color:var(--muted);max-width:62ch}
+.admin-status{border:1px solid #9dc3b7;background:var(--accent-tint);padding:10px 13px;border-radius:7px;margin:18px 0;color:#154f46}
+.admin-status[data-error=true]{color:var(--danger);background:#fceeee;border-color:#d8a8a9}
+.admin-report-title{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap}
+#admin-updated{color:var(--muted);font-size:.83rem;margin-top:8px}
+.admin-buttons{display:flex;align-items:center;gap:15px}
+.admin-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-block:1px solid var(--line);margin:25px 0}
+.admin-summary div{padding:18px 15px 18px 0}
+.admin-summary dd{font-size:1.5rem;font-weight:700;margin:0;line-height:1.3;font-variant-numeric:tabular-nums}
+.admin-summary dt{color:var(--muted);font-size:.85rem;margin-top:3px}
+.admin-table-wrap{overflow-x:auto;background:var(--white);border:1px solid var(--line);border-radius:8px}
+table{width:100%;border-collapse:collapse;font-size:.92rem}th,td{text-align:left;padding:10px 15px;border-bottom:1px solid var(--line)}th{background:#edf3f1;font-weight:650}th:last-child,td:last-child{text-align:right;font-variant-numeric:tabular-nums}tbody tr:last-child td{border:0}
+.claim-row{border-block-start:1px solid var(--line);padding:18px 0}
+.claim-row h3{font-size:1rem;margin:0 0 6px}.claim-row p{margin:5px 0;color:var(--muted);overflow-wrap:anywhere}.claim-row .claim-reason{color:var(--ink);max-width:75ch;white-space:pre-wrap}
+.claim-row small{color:var(--muted)}.claim-row .button{margin-top:10px}
+@media(max-width:600px){.admin-main{margin-top:24px}.admin-main h1{font-size:1.55rem}.admin-summary{grid-template-columns:1fr}.admin-summary div+div{border-top:1px solid var(--line)}.admin-summary div{padding:12px 0}.admin-summary dd{font-size:1.3rem}}

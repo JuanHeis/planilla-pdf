@@ -26,6 +26,40 @@ let changed = false;
 let busy = false;
 let sequence = 0;
 let showExisting = true;
+let appConfig = { commercial: false };
+let serviceReady = false;
+
+function track(event) {
+  if (!appConfig.commercial) return;
+  fetch("/api/events", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ event }), keepalive: true,
+  }).catch(() => {});
+}
+
+function markChanged() {
+  changed = true;
+}
+
+function displayPdf(result, filename) {
+  pdf = { ...result, existingFields: result.existingFields ?? [], filename };
+  pageIndex = 0;
+  changed = false;
+  setExistingVisibility(true);
+  ui.welcome.hidden = true;
+  ui.editor.hidden = false;
+  ui["editor-actions"].hidden = false;
+  ui.filename.textContent = filename;
+  byId("download-original").hidden = !appConfig.commercial || !pdf.existingFields.length;
+  ui["page-picker"].replaceChildren(...pdf.pages.map((_, index) => {
+    const option = document.createElement("option");
+    option.value = String(index);
+    option.textContent = "Página " + (index + 1) + " de " + pdf.pages.length;
+    return option;
+  }));
+  renderPage();
+  ui.filename.focus({ preventScroll: true });
+}
 
 function icon(name) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -66,8 +100,10 @@ function mayReplace() {
 }
 
 async function openPdf(file, fromDemo = false) {
+  await serviceConfigPromise;
+  if (!serviceReady) return;
   setBusy(true);
-  notify("Buscando campos en el PDF…");
+  notify(appConfig.commercial ? "Buscando campos en el PDF… Todavía no se consumió tu descarga gratis." : "Buscando campos en el PDF…");
   try {
     if (fromDemo) {
       file = await (await checkedFetch("/demo.pdf")).blob();
@@ -80,25 +116,12 @@ async function openPdf(file, fromDemo = false) {
     const result = await response.json();
     if (!result.pages?.length) throw new Error("El archivo no contiene páginas para mostrar.");
 
-    pdf = { ...result, existingFields: result.existingFields ?? [], filename: fromDemo ? "solicitud-ejemplo.pdf" : file.name };
-    pageIndex = 0;
-    changed = false;
-    setExistingVisibility(true);
-    ui.welcome.hidden = true;
-    ui.editor.hidden = false;
-    ui["editor-actions"].hidden = false;
-    ui.filename.textContent = pdf.filename;
-
-    ui["page-picker"].replaceChildren(...pdf.pages.map((_, index) => {
-      const option = document.createElement("option");
-      option.value = String(index);
-      option.textContent = "Página " + (index + 1) + " de " + pdf.pages.length;
-      return option;
-    }));
-    renderPage();
-    ui.filename.focus({ preventScroll: true });
+    displayPdf(result, fromDemo ? "solicitud-ejemplo.pdf" : file.name);
+    track("editor_open");
     if (pdf.existingFields.length) {
-      const existingMessage = "Este PDF ya trae campos rellenables. Se ven en violeta y se conservan al descargar.";
+      const existingMessage = appConfig.commercial
+        ? "Este PDF ya trae campos rellenables. Los ves en violeta. Podés descargar el original gratis. Esta descarga no consume una conversión."
+        : "Este PDF ya trae campos rellenables. Se ven en violeta y se conservan al descargar.";
       const warnings = pdf.warnings ?? [];
       notify([existingMessage, ...warnings].join(" "), warnings.length ? "warning" : "info");
     } else if (pdf.warnings?.length) {
@@ -106,7 +129,7 @@ async function openPdf(file, fromDemo = false) {
     } else if (!pdf.fields.length) {
       notify("No se detectaron campos. Podés agregar texto o casillas manualmente.", "warning");
     } else {
-      notify("Revisá los campos resaltados antes de descargar el PDF.");
+      notify(appConfig.commercial ? "Revisá cada página y corregí lo que haga falta. Preparar y revisar todavía no consume tu descarga gratis." : "Revisá los campos resaltados antes de descargar el PDF.");
     }
   } catch (error) {
     notify(error.message === "Failed to fetch" ? "No hay conexión con la aplicación. Volvé a iniciarla e intentá de nuevo." : error.message, "error");
@@ -274,7 +297,7 @@ function resizeField(field, width, height) {
 }
 
 function finishGeometry(field) {
-  changed = true;
+  markChanged();
   updateField(field);
   updateMetrics(field);
 }
@@ -296,7 +319,7 @@ function addField(x, y) {
     name: (isText ? "Texto " : "Casilla ") + sequence,
   };
   pdf.fields.push(selected);
-  changed = true;
+  markChanged();
   setPlacing(undefined);
   renderFields();
   pageElements.get(String(selected.id)).marker.focus({ preventScroll: true });
@@ -308,14 +331,25 @@ function removeSelected() {
   const index = pageFields.indexOf(selected);
   pdf.fields.splice(pdf.fields.indexOf(selected), 1);
   selected = pageFields[index + 1] || pageFields[index - 1];
-  changed = true;
+  markChanged();
   renderFields();
   const nextControl = selected ? pageElements.get(String(selected.id)).row : addButtons[0];
   nextControl.focus({ preventScroll: true });
 }
 
 async function exportPdf() {
+  await serviceConfigPromise;
+  if (!serviceReady) return;
   if (!pdf || busy) return;
+  if (appConfig.commercial) {
+    setBusy(true);
+    try {
+      await window.PlanillaCheckout.open(pdf);
+    } finally {
+      setBusy(false);
+    }
+    return;
+  }
   setBusy(true);
   ui.export.querySelector("span").textContent = "Preparando PDF…";
   try {
@@ -414,7 +448,7 @@ ui["field-name"].addEventListener("change", () => {
   selected.name = ui["field-name"].value.trim() || typeName[selected.type];
   ui["field-name"].value = selected.name;
   updateField(selected);
-  changed = true;
+  markChanged();
 });
 for (const input of metrics) {
   input.addEventListener("change", () => {
@@ -520,3 +554,108 @@ window.addEventListener("beforeunload", (event) => {
   }
 });
 
+
+
+byId("download-original").addEventListener("click", async () => {
+  if (!pdf || busy) return;
+  setBusy(true);
+  try {
+    const response = await checkedFetch("/api/jobs/" + encodeURIComponent(pdf.documentId) + "/original");
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = pdf.filename;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    notify("Descargaste el original que ya era rellenable. Esta descarga no consumió una conversión.");
+  } catch (error) {
+    notify(error.message, "error");
+  } finally {
+    setBusy(false);
+  }
+});
+window.addEventListener("planilla:prepared", (event) => {
+  if (pdf?.documentId === event.detail?.documentId && JSON.stringify(pdf.fields) === event.detail.fields) changed = false;
+});
+window.addEventListener("planilla:downloaded", (event) => {
+  notify(event.detail?.recoveryAvailable
+    ? "Tu PDF fue descargado. Podés recuperar este trabajo desde el enlace de tu correo."
+    : "Tu PDF fue descargado. Guardá la copia en tu equipo para volver a usarla.");
+});
+
+async function initializeService() {
+  serviceReady = false;
+  setBusy(true);
+  byId("local-ocr-link").hidden = true;
+  byId("processing-place").textContent = "Comprobando el servicio antes de abrir tu PDF…";
+  try {
+    const response = await fetch("/api/config");
+    if (!response.ok) throw new Error("service_unavailable");
+    const configuration = await response.json();
+    if (typeof configuration.commercial !== "boolean") throw new Error("invalid_configuration");
+    appConfig = configuration;
+    window.PlanillaCheckout.configure(appConfig);
+    serviceReady = true;
+    setBusy(false);
+    notify();
+    if (!appConfig.commercial) {
+      byId("local-ocr-link").hidden = false;
+      byId("processing-place").textContent = "Tus archivos se procesan en esta computadora.";
+      return;
+    }
+    byId("service-offer").hidden = false;
+    const price = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 }).format(appConfig.price ?? 2990);
+    byId("service-offer").textContent = "Revisar es gratis. Tu primera conversión de hasta " + (appConfig.freeMaxPages ?? 2)
+      + " páginas también. Después, ARS " + price + " por PDF de hasta " + (appConfig.maxPages ?? 5) + " páginas.";
+    byId("local-ocr-link").hidden = true;
+    byId("open-recovery").hidden = false;
+    byId("processing-place").textContent = "Tus archivos se procesan de forma privada y se borran al vencer el trabajo.";
+    ui.export.querySelector("span").textContent = "Continuar a descarga";
+    for (const link of document.querySelectorAll('.source-link')) link.href = appConfig.sourceUrl || "/source";
+    const query = new URLSearchParams(window.location.search);
+    const verifyError = query.get("verify_error");
+    if (verifyError) {
+      const explanation = verifyError === "expired"
+        ? "El enlace de tu correo venció. Pedí uno nuevo para recuperar tu trabajo. No se consumió ninguna descarga por abrir este enlace."
+        : "No pudimos abrir este enlace. Pedí uno nuevo con el correo que usaste. No se consumió ninguna descarga por abrir este enlace.";
+      notify(explanation, "warning");
+      window.PlanillaCheckout.openRecovery(explanation);
+    }
+    const job = query.get("job");
+    if (!job) return;
+    setBusy(true);
+    notify("Recuperando tu trabajo…");
+    try {
+      const response = await checkedFetch("/api/jobs/" + encodeURIComponent(job) + "/metadata");
+      const result = await response.json();
+      displayPdf({ ...result, documentId: result.documentId || job }, result.filename || "formulario.pdf");
+      notify("Recuperamos tu trabajo y sus campos. Estamos comprobando el estado de tu descarga.");
+      await window.PlanillaCheckout.open(pdf, false);
+      notify(pdf.existingFields.length
+        ? "Este PDF ya era rellenable. Podés descargar el original gratis. Esta descarga no consume una conversión."
+        : "Recuperamos tu trabajo y sus campos. Podés seguir corrigiendo o continuar con la descarga.");
+    } catch (error) {
+      notify(error.message, "error");
+    } finally {
+      setBusy(false);
+    }
+  } catch {
+    serviceReady = false;
+    setBusy(true);
+    byId("processing-place").textContent = "Esperando conexión con el servicio.";
+    notify("No pudimos comprobar el servicio. Tu PDF todavía no se envió y no se consumió ninguna descarga.", "error");
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "button secondary";
+    retry.textContent = "Volver a intentar";
+    retry.addEventListener("click", () => {
+      retry.disabled = true;
+      notify("Comprobando el servicio…");
+      initializeService();
+    });
+    ui.notice.append(document.createTextNode(" "), retry);
+  }
+}
+const serviceConfigPromise = initializeService();

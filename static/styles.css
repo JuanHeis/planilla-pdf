@@ -263,3 +263,38 @@ select, .panel-section input { color: var(--ink); background: var(--white); bord
   .preview { height: auto; min-height: 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; }
   .field-list { max-height: 160px; }
 }
+
+.service-offer { margin-top: 14px; color: var(--accent-hover); max-width: 42ch; font-size: .88rem; }
+.footer { flex-wrap: wrap; gap: 6px 20px; }
+.footer > span { display: inline-flex; align-items: center; gap: 7px; }
+.footer .text-button, .source-link { font-size: .82rem; }
+.source-link { color: var(--muted); text-underline-offset: .18em; }
+.download-dialog { width: min(560px, calc(100% - 24px)); max-height: calc(100dvh - 32px); overflow-y: auto; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: var(--white); padding: 24px; }
+.download-dialog::backdrop { background: #13262bb0; }
+.dialog-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 15px; margin-bottom: 18px; }
+.dialog-heading h2 { font-size: 1.4rem; line-height: 1.2; font-weight: 700; margin: 0; }
+.dialog-heading .button { min-height: 32px; padding: 4px 9px; font-size: .8rem; }
+.dialog-status { padding: 11px 13px; background: var(--accent-tint); border: 1px solid #9dc3b7; border-radius: 7px; color: #154f46; font-size: .94rem; }
+.dialog-status[data-kind="error"] { color: var(--danger); background: #fceeee; border-color: #d8a8a9; }
+.dialog-status[data-kind="warning"] { color: #694616; background: #fff5e5; border-color: #ddc59f; }
+.dialog-detail { margin: 13px 0 17px; color: var(--muted); font-size: .9rem; }
+.download-price { margin: 17px 0; font-size: 1.1rem; font-weight: 700; }
+.download-form { display: grid; gap: 9px; margin-block: 18px; }
+.download-form label, .claim-form label { font-size: .87rem; font-weight: 600; }
+.download-form input, .claim-form textarea { display: block; width: 100%; min-height: 43px; padding: 9px 11px; border: 1px solid #9cb2ad; border-radius: 6px; color: var(--ink); background: var(--white); font: inherit; }
+.download-actions { display: flex; flex-wrap: wrap; gap: 9px; margin: 16px 0 9px; }
+.download-actions .primary { flex: 1 1 220px; }
+.download-success { margin: 10px 0; color: #154f46; font-size: .86rem; }
+.claim-form { display: grid; gap: 9px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
+.claim-form h3 { margin: 0; font-size: 1rem; }
+.claim-form textarea { resize: vertical; min-height: 90px; }
+.dialog-contact { display: inline-block; color: var(--accent); margin-top: 17px; font-size: .88rem; text-underline-offset: .2em; }
+.recovery-jobs h3 { margin: 0 0 9px; font-size: 1rem; }
+.recovery-jobs ul { list-style: none; margin: 0 0 15px; padding: 0; max-height: 330px; overflow: auto; }
+.recovery-jobs li { border-top: 1px solid var(--line); }
+.recovery-jobs a { display: grid; gap: 3px; padding: 12px 2px; color: var(--accent); text-decoration: none; }
+.recovery-jobs a:hover span { text-decoration: underline; }
+.recovery-jobs small { color: var(--muted); font-size: .82rem; }
+@media(max-width:680px){.download-dialog{padding:18px}.dialog-heading h2{font-size:1.2rem}.download-actions .button{width:100%}.footer{padding-inline:14px}.service-offer{max-width:100%}}
+@media(max-width:680px){.topbar{flex-wrap:wrap}.top-actions{flex:1 1 auto;justify-content:flex-end;flex-wrap:wrap}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
