@@ -28,7 +28,7 @@ const stages = [
   ["download", "Descargas de conversiones"],
   ["original_download", "Descargas de originales rellenables"],
   ["claim_requested", "Reclamos recibidos"],
-  ["payment_refunded", "Devoluciones solicitadas"],
+  ["payment_refunded", "Devoluciones confirmadas"],
 ];
 
 function status(message, error = false) {
@@ -94,7 +94,7 @@ function render(metrics, claims) {
   const counts = metrics.counts || {};
   admin["admin-summary"].replaceChildren(
     summary("Cobros aprobados, antes de comisiones", amounts.format(metrics.grossApprovedARS || 0)),
-    summary("Devoluciones solicitadas", amounts.format(metrics.refundedARS || 0)),
+    summary("Devoluciones confirmadas", amounts.format(metrics.refundedARS || 0)),
     summary("Reclamos pendientes", String(metrics.openClaims || 0)),
   );
   admin["admin-funnel"].replaceChildren(...stages.map(([key, label]) => {
@@ -170,11 +170,13 @@ admin["refund-confirm"].addEventListener("click", async () => {
   admin["refund-status"].dataset.error = "false";
   admin["refund-status"].textContent = "Solicitando la devolución a Mercado Pago…";
   try {
-    await call("/api/admin/claims/" + encodeURIComponent(claim.id) + "/refund", {});
+    const result = await call("/api/admin/claims/" + encodeURIComponent(claim.id) + "/refund", {});
     admin["refund-dialog"].close();
     pendingClaim = undefined;
     await refresh();
-    status("La devolución quedó solicitada. El plazo de acreditación depende de Mercado Pago.");
+    status(result.message || (result.state === "refunded"
+      ? "Mercado Pago confirmó la devolución. El plazo de acreditación depende del medio de pago."
+      : "La devolución fue solicitada. Estamos esperando la confirmación de Mercado Pago."));
   } catch (error) {
     admin["refund-status"].dataset.error = "true";
     admin["refund-status"].textContent = error.message;

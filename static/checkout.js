@@ -100,7 +100,7 @@ window.PlanillaCheckout = (() => {
     } else if (state === "expired") {
       nodes["download-detail"].textContent = "El plazo de este trabajo terminó y sus archivos se borraron. Podés abrir el PDF otra vez. Si ya habías pagado y necesitás ayuda, escribinos con el comprobante.";
     } else if (state === "refunded") {
-      nodes["download-detail"].textContent = "El reintegro fue solicitado a Mercado Pago. El plazo de acreditación depende de tu medio de pago.";
+      nodes["download-detail"].textContent = "Mercado Pago confirmó la devolución. El plazo de acreditación depende de tu medio de pago.";
     }
     if (status.claimStatus) {
       nodes["download-detail"].textContent += " Tu reclamo quedó registrado. Podés revisar su estado desde el enlace de recuperación de este trabajo.";
