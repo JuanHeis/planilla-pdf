@@ -295,6 +295,49 @@ class CommerceTests(unittest.TestCase):
                 smtp.return_value.__enter__.return_value.login.assert_called_once_with("sender@gmail.com", "app-password")
                 smtp.return_value.__enter__.return_value.send_message.assert_called_once()
 
+    def test_expired_unverified_email_can_recover_without_spending_quota(self):
+        job = self.job()
+        self.shop.request_email(self.session, job, "pending@example.com")
+        original = re.search(r"token=([A-Za-z0-9_-]+)", self.provider.emails[-1]["text"])[1]
+        self.now += 901
+        with self.assertRaises(CommerceError) as error:
+            self.shop.verify(original)
+        self.assertEqual(error.exception.code, "expired_token")
+        self.assertIsNone(self.shop.status(self.session, job)["email"])
+        result = self.shop.recover("pending@example.com")
+        self.assertEqual(result, self.shop.recover("unknown@example.com"))
+        self.assertEqual(len(self.provider.emails), 2)
+        recovered = re.search(r"token=([A-Za-z0-9_-]+)", self.provider.emails[-1]["text"])[1]
+        self.assertNotEqual(recovered, original)
+        self.shop.recover("pending@example.com")
+        self.assertEqual(len(self.provider.emails), 2)
+        self.assertEqual(self.shop.verify(recovered), {"sessionId": self.session, "jobId": job})
+        self.assertFalse(self.shop.status(self.session, job)["quotaConsumed"])
+        self.assertTrue(self.shop.status(self.session, job)["freeAvailable"])
+
+    def test_unverified_recovery_only_targets_requested_job_and_nonexpired_files(self):
+        pending = self.job()
+        self.shop.request_email(self.session, pending, "pending@example.com")
+        self.now += 901
+        other = self.job()
+        self.shop.recover("pending@example.com")
+        recovered = re.search(r"token=([A-Za-z0-9_-]+)", self.provider.emails[-1]["text"])[1]
+        self.assertEqual(self.shop.verify(recovered)["jobId"], pending)
+        self.assertNotEqual(pending, other)
+        self.now += 7 * DAY
+        self.shop.recover("pending@example.com")
+        self.assertEqual(len(self.provider.emails), 2)
+
+    def test_claim_accepts_multiline_text_but_rejects_control_characters(self):
+        job, identifier = self.paid_order()
+        self.webhook(identifier)
+        reason = "Faltan varios campos.\n\tLa segunda página quedó vacía.\r\nRevisar por favor."
+        self.shop.claim(self.session, job, reason)
+        self.assertEqual(self.shop.claims()[0]["reason"], reason)
+        with self.assertRaises(CommerceError) as error:
+            self.shop.claim(self.session, job, "Faltan campos\x00en la segunda página")
+        self.assertEqual(error.exception.code, "invalid_claim")
+
     def test_partial_processed_and_stale_webhook_do_not_grant_or_revoke_incorrectly(self):
         job, identifier = self.paid_order()
         self.provider.orders[identifier].update(status_detail="partially_refunded")

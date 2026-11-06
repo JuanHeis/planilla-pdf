@@ -327,9 +327,13 @@ class Commerce:
     def recover(self, email):
         email = self._normalize_email(email)
         with self._db() as db:
+            db.execute("BEGIN IMMEDIATE")
             row = db.execute("""SELECT jobs.* FROM jobs JOIN sessions ON sessions.id=jobs.session
-                WHERE sessions.email=? AND jobs.expires>? AND jobs.prepared_sha IS NOT NULL
-                ORDER BY jobs.created DESC LIMIT 1""", (email, self.clock())).fetchone()
+                WHERE (sessions.email=? OR (sessions.email IS NULL AND EXISTS (
+                    SELECT 1 FROM email_tokens WHERE email_tokens.session=jobs.session
+                    AND email_tokens.job=jobs.id AND email_tokens.email=?)))
+                AND jobs.expires>? AND jobs.prepared_sha IS NOT NULL
+                ORDER BY jobs.created DESC LIMIT 1""", (email, email, self.clock())).fetchone()
             if row:
                 try:
                     token = self._new_token(db, row["session"], row["id"], email)
@@ -520,7 +524,8 @@ class Commerce:
                 self._event(db, "payment_rejected", job["session"], job["id"])
 
     def claim(self, session, job, reason):
-        if not isinstance(reason, str) or not 10 <= len(reason.strip()) <= 2000 or not reason.isprintable():
+        if (not isinstance(reason, str) or not 10 <= len(reason.strip()) <= 2000
+                or not all(character.isprintable() or character in "\n\r\t" for character in reason)):
             raise CommerceError("Contanos qué salió mal en entre 10 y 2000 caracteres.", 400, "invalid_claim")
         with self._db() as db:
             row = self._job(db, session, job)
