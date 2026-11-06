@@ -1,6 +1,6 @@
 # Editor de formularios PDF
 
-En Windows, descomprimí el ZIP y abrí **Iniciar.cmd**. Requiere Python 3.10 o posterior disponible como comando python. La primera ejecución necesita Internet para instalar PyMuPDF dentro de la carpeta de la app. El navegador abre el editor local. Para detenerlo, cerrá la ventana que ejecuta Iniciar.cmd.
+En Windows, descomprimí el ZIP y abrí **Iniciar.cmd**. Requiere Python 3.10 o posterior disponible como comando python. La primera ejecución necesita Internet para instalar las dependencias dentro de la carpeta de la app. El navegador abre el editor local. Para detenerlo, cerrá la ventana que ejecuta Iniciar.cmd.
 
 Podés empezar con el formulario de ejemplo o elegir un PDF. Revisá cada página, seleccioná y mové los campos con el mouse o las flechas, o agregá campos manualmente. Descargá el PDF y probá completarlo en tu lector habitual. El archivo original se conserva.
 
@@ -10,7 +10,7 @@ El motor busca líneas, guías punteadas, recuadros con o sin contorno y casilla
 
 El servidor solo escucha en tu equipo. Mantiene hasta cuatro documentos en memoria mientras está abierto y descarta las sesiones inactivas después de 30 minutos al recibir la siguiente solicitud. El límite de carga es 20 MB y 50 páginas. Cerrá el servidor cuando termines. Los cambios de edición pertenecen a la sesión abierta en el navegador, así que descargá antes de cerrar o recargar la pestaña.
 
-Este paquete corresponde al prototipo local. Las funciones de acceso por cuenta y cobro quedan para etapas posteriores.
+Estas instrucciones corresponden al modo local, que funciona sin cuentas ni cobros. El mismo repositorio incluye el modo web con correo verificado, descarga gratuita y Mercado Pago. Para publicarlo seguí DEPLOY.md; para conocer los límites y criterios de aceptación consultá REQUIREMENTS.md.
 
 ## Revisar OCR y compartir correcciones
 

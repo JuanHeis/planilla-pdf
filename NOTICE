@@ -11,4 +11,4 @@ Componentes de terceros
 
 Los avisos anteriores acompañan las licencias completas de las dependencias. Los archivos de usuarios, credenciales y bases de datos de operación pertenecen a los datos privados del servicio y se excluyen de la entrega del código fuente.
 
-El responsable de una publicación debe configurar SOURCE_URL con un enlace permanente al código correspondiente a la versión desplegada y mantener disponible esa revisión, los archivos de construcción y este aviso.
+El responsable de una publicación debe mantener un enlace permanente al código correspondiente a la versión desplegada, esa revisión, los archivos de construcción y este aviso. Planilla deriva el enlace del commit de Railway o permite configurarlo mediante SOURCE_URL.

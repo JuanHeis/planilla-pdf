@@ -21,7 +21,7 @@ Planilla convierte formularios PDF del usuario en una copia rellenable. El usuar
 | ID | Requisito | Criterio de aceptación |
 |---|---|---|
 | ACC-01 | Permitir cargar y revisar con una sesión anónima. | El servidor crea una identidad opaca en una cookie HttpOnly. Un visitante carece de acceso a los trabajos de otra sesión. |
-| ACC-02 | Pedir correo al solicitar la descarga. | No se requiere contraseña. El correo se verifica mediante enlace temporal de un solo uso. |
+| ACC-02 | Pedir correo al solicitar la descarga. | No se requiere contraseña. El enlace permite la primera verificación durante 15 minutos; una vez verificado permite recuperar el trabajo hasta 7 días desde su emisión. Debe tratarse como una credencial privada. |
 | ACC-03 | Conservar el trabajo al pasar por correo y pago. | Volver desde un enlace válido recupera el trabajo y su estado. Un enlace vencido permite pedir otro sin perder el archivo preparado mientras siga vigente. |
 | ACC-04 | Reenviar correo con límites. | Los reintentos normales funcionan. Pedidos repetidos demasiado rápido devuelven una espera concreta y conservan el trabajo. |
 | FREE-01 | Primera conversión gratuita de hasta dos páginas por correo verificado. | El servidor decide la elegibilidad y la interfaz explica antes de confirmar si la descarga será gratuita o paga. |
