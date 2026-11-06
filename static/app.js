@@ -43,6 +43,17 @@ function markChanged() {
   byId("learning-save").disabled = true;
 }
 
+function rememberPreparedDocument(job, fieldsSnapshot) {
+  if (!pdf || pdf.documentId !== job || JSON.stringify(pdf.fields) !== fieldsSnapshot) return;
+  if (appConfig.commercial) {
+    const address = new URL(window.location.href);
+    address.searchParams.set("job", job);
+    address.searchParams.delete("verify_error");
+    window.history.replaceState(null, "", address.pathname + address.search + address.hash);
+  }
+  changed = false;
+}
+
 function displayPdf(result, filename) {
   pdf = { ...result, existingFields: result.existingFields ?? [], filename };
   pageIndex = 0;
@@ -416,10 +427,10 @@ byId("learning-save").addEventListener("click", async () => {
     const result = await response.json();
     if (pdf.documentId !== job) return;
     const changes = result.learning.changes;
-    byId("learning-status").textContent = "Revisión guardada: " + changes.approved + " campos conservados, "
-      + changes.moved + " movidos, " + changes.resized + " redimensionados, " + changes.deleted + " quitados y "
-      + changes.added + " agregados. " + (result.autoApply ? "Los patrones consistentes pueden ayudar en otros formularios." : "Se evaluarán los patrones antes de activar ajustes automáticos.");
-    if (result.saved && JSON.stringify(pdf.fields) === snapshot) changed = false;
+    byId("learning-status").textContent = "Revisión guardada. Campos conservados: " + changes.approved
+      + "; movidos: " + changes.moved + "; redimensionados: " + changes.resized + "; quitados: " + changes.deleted
+      + "; agregados: " + changes.added + ". " + (result.autoApply ? "Los patrones consistentes pueden ayudar en otros formularios." : "Se evaluarán los patrones antes de activar ajustes automáticos.");
+    if (result.saved) rememberPreparedDocument(job, snapshot);
     byId("learning-consent").checked = false;
   } catch (error) {
     byId("learning-status").textContent = error.message + " Tu gratuito no se consumió por este paso.";
@@ -639,7 +650,7 @@ byId("download-original").addEventListener("click", async () => {
   }
 });
 window.addEventListener("planilla:prepared", (event) => {
-  if (pdf?.documentId === event.detail?.documentId && JSON.stringify(pdf.fields) === event.detail.fields) changed = false;
+  rememberPreparedDocument(event.detail?.documentId, event.detail?.fields);
 });
 window.addEventListener("planilla:downloaded", (event) => {
   notify(event.detail?.recoveryAvailable
