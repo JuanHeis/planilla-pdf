@@ -328,7 +328,10 @@ class Commerce:
     def request_email(self, session, job, email):
         email = self._normalize_email(email)
         with self._db() as db:
-            self._job(db, session, job)
+            job_row = self._job(db, session, job)
+            if job_row["owner_email"] and job_row["owner_email"] != email:
+                raise CommerceError("Este trabajo está vinculado a otro correo. Recuperalo con ese correo o abrí una sesión nueva.",
+                                    409, "email_mismatch")
             token = self._new_token(db, session, job, email)
             self._mail(email, token)
             db.execute("UPDATE jobs SET email_sent=? WHERE id=?", (self.clock(), job))
@@ -341,20 +344,22 @@ class Commerce:
         now = self.clock()
         with self._db() as db:
             row = db.execute("SELECT * FROM email_tokens WHERE digest=?", (sha256(token.encode()).hexdigest(),)).fetchone()
-            if not row or now - row["created"] > (7 * DAY if row["verified"] else 900):
+            if not row or now - row["created"] > (7 * DAY if row["verified"] is not None else 900):
                 raise CommerceError("El enlace venció. Pedí uno nuevo para continuar.", 410, "expired_token")
+            job = db.execute("SELECT * FROM jobs WHERE id=? AND expires>?", (row["job"], now)).fetchone()
+            if job is None or (job["owner_email"] and job["owner_email"] != row["email"]):
+                raise CommerceError("El enlace no corresponde a este trabajo o venció. Pedí uno nuevo.", 410, "expired_token")
             session = row["session"]
-            if row["purpose"] == "recover":
-                job = db.execute("SELECT * FROM jobs WHERE id=? AND owner_email=? AND expires>?",
-                                 (row["job"], row["email"], now)).fetchone()
-                if job is None:
+            recovery = row["purpose"] == "recover" or row["verified"] is not None
+            if recovery:
+                if job["owner_email"] != row["email"]:
                     raise CommerceError("El enlace venció. Pedí uno nuevo para continuar.", 410, "expired_token")
                 # A recovery link proves the email, never possession of the original browser.
                 session = secrets.token_urlsafe(32)
             else:
                 self._job(db, session, row["job"])
             db.execute("INSERT INTO people(email,verified) VALUES(?,1) ON CONFLICT(email) DO UPDATE SET verified=1", (row["email"],))
-            if row["purpose"] == "recover":
+            if recovery:
                 db.execute("INSERT INTO sessions(id,created,touched,email) VALUES(?,?,?,?)", (session, now, now, row["email"]))
             else:
                 db.execute("UPDATE sessions SET email=?,touched=? WHERE id=?", (row["email"], now, session))
@@ -510,10 +515,20 @@ class Commerce:
         with closing(self._db()) as db:
             row = self._job(db, session, job)
             order = db.execute("SELECT * FROM orders WHERE reference=?", (row["last_order"],)).fetchone() if row["last_order"] else None
-        if order and order["provider_id"] and (not order["last_checked"] or order["last_checked"] < self.clock() - 10):
-            result = self.http("GET", ORDER_API + "/" + order["provider_id"], self._mp_headers())
-            # Pending UI updates are useful, but only the signed webhook grants paid export.
-            self._apply_order(order["reference"], result, grant=False)
+        if row["grant_kind"] in {"paid", "free"} or row["original_mode"]:
+            return self.status(session, job)
+        if (order and order["provider_id"] and order["state"] not in {"failed", "canceled", "refunded"}
+                and (not order["last_checked"] or order["last_checked"] < self.clock() - 10)):
+            try:
+                result = self.http("GET", ORDER_API + "/" + order["provider_id"], self._mp_headers())
+                # Pending UI updates are useful, but only the signed webhook grants paid export.
+                self._apply_order(order["reference"], result, grant=False)
+            except CommerceError as error:
+                if error.code != "provider_unavailable":
+                    raise
+                status = self.status(session, job)
+                status["message"] = "El pago sigue pendiente. Mercado Pago no respondió; reintentaremos la consulta. Tu trabajo está guardado."
+                return status
         return self.status(session, job)
 
     def _apply_order(self, reference, result, grant=True):
@@ -604,8 +619,10 @@ class Commerce:
     def metrics(self):
         with closing(self._db()) as db:
             since = self.clock() - 30 * DAY
-            counts = dict(db.execute("SELECT event,COUNT(*) FROM events WHERE created>=? GROUP BY event", (since,)))
-            daily = [dict(row) for row in db.execute("SELECT date(created,'unixepoch') AS day,event,COUNT(*) AS count FROM events WHERE created>=? GROUP BY day,event ORDER BY day", (since,))]
+            # One document in the funnel stays one document after retries/exports.
+            count_key = "CASE WHEN event IN ('prepared','download','original_download','detected','preview_ready','corrected') THEN job ELSE CAST(id AS TEXT) END"
+            counts = dict(db.execute(f"SELECT event,COUNT(DISTINCT {count_key}) FROM events WHERE created>=? GROUP BY event", (since,)))
+            daily = [dict(row) for row in db.execute(f"SELECT date(created,'unixepoch') AS day,event,COUNT(DISTINCT {count_key}) AS count FROM events WHERE created>=? GROUP BY day,event ORDER BY day", (since,))]
             claims = db.execute("SELECT COUNT(*) FROM claims WHERE state IN ('requested','refund_requested')").fetchone()[0]
         return {"periodDays": 30, "counts": counts, "daily": daily, "openClaims": claims,
                 "grossApprovedARS": counts.get("payment_approved", 0) * PRICE_ARS,

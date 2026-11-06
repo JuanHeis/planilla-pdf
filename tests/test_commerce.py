@@ -94,6 +94,12 @@ class CommerceTests(unittest.TestCase):
         self.provider.orders[identifier].update(status="processed", status_detail="accredited", total_paid_amount="2990.00", last_updated_date="2026-11-06T11:00:00Z")
         return job, identifier
 
+    def legacy_email_change(self, email):
+        # Reproduce persisted sessions from versions that allowed changing identity.
+        with self.shop._db() as db:
+            db.execute("INSERT INTO people(email,verified) VALUES(?,1)", (email,))
+            db.execute("UPDATE sessions SET email=? WHERE id=?", (email, self.session))
+
     def test_original_download_keeps_free_and_extra_fields_require_entitlement(self):
         job = self.job(existing=2)
         state = self.shop.prepare(self.session, job, b"%PDF-1.7 original", original=True)
@@ -184,7 +190,7 @@ class CommerceTests(unittest.TestCase):
         self.webhook(provider_id)
         self.shop.claim(self.session, original, "Quedaron campos sin detectar")
         self.now += 61
-        self.verify(original, "different@example.com")
+        self.legacy_email_change("different@example.com")
         different = self.job()
         self.assertEqual(self.shop.authorize(self.session, original)["owner_email"], "user@example.com")
         self.assertEqual(self.shop.authorize(self.session, different)["owner_email"], "different@example.com")
@@ -204,6 +210,34 @@ class CommerceTests(unittest.TestCase):
         with self.assertRaises(CommerceError):
             self.shop.authorize(replay["sessionId"], different)
         self.assertEqual(self.shop.authorize(self.session, different)["owner_email"], "different@example.com")
+
+    def test_original_verified_token_replay_does_not_restore_old_browser_capability(self):
+        original = self.job()
+        token = self.verify(original)
+        self.legacy_email_change("different@example.com")
+        different = self.job()
+        replay = self.shop.verify(token)
+        self.assertNotEqual(replay["sessionId"], self.session)
+        self.assertEqual(self.shop.authorize(replay["sessionId"], original)["owner_email"], "user@example.com")
+        with self.assertRaises(CommerceError):
+            self.shop.authorize(replay["sessionId"], different)
+        self.assertEqual(self.shop.status(self.session, different)["email"], "different@example.com")
+
+    def test_unused_original_token_cannot_take_over_a_job_verified_for_another_email(self):
+        job = self.job()
+        self.shop.request_email(self.session, job, "unused@example.com")
+        unused = re.search(r"token=([A-Za-z0-9_-]+)", self.provider.emails[-1]["text"])[1]
+        self.verify(job, "different@example.com")
+        different = self.job()
+        with self.assertRaises(CommerceError):
+            self.shop.verify(unused)
+        self.assertEqual(self.shop.status(self.session, job)["email"], "different@example.com")
+        self.assertEqual(self.shop.authorize(self.session, different)["owner_email"], "different@example.com")
+        sent = len(self.provider.emails)
+        with self.assertRaises(CommerceError) as error:
+            self.shop.request_email(self.session, job, "unused@example.com")
+        self.assertEqual(error.exception.code, "email_mismatch")
+        self.assertEqual(len(self.provider.emails), sent)
 
     def test_retention_starts_at_first_grant_and_retries_do_not_extend_it(self):
         free_job = self.job()
@@ -254,6 +288,33 @@ class CommerceTests(unittest.TestCase):
             self.shop.download(self.session, job)
         self.webhook(identifier)
         self.assertEqual(self.shop.status(self.session, job)["state"], "download_ready")
+
+    def test_refresh_keeps_approved_export_available_without_provider(self):
+        job, identifier = self.paid_order()
+        self.webhook(identifier)
+        self.now += 30
+        with patch.object(self.shop, "http", side_effect=CommerceError("Provider timeout", 503, "provider_unavailable")) as provider:
+            self.assertEqual(self.shop.refresh(self.session, job)["state"], "download_ready")
+            self.assertTrue(self.shop.download(self.session, job).is_file())
+            provider.assert_not_called()
+
+    def test_refresh_keeps_pending_state_during_provider_outage_and_skips_refunded(self):
+        job, identifier = self.paid_order()
+        with patch.object(self.shop, "http", side_effect=CommerceError("Provider timeout", 503, "provider_unavailable")) as provider:
+            status = self.shop.refresh(self.session, job)
+            self.assertEqual(status["state"], "payment_pending")
+            self.assertIn("reintentaremos", status["message"])
+            self.assertIsNone(status["downloadUrl"])
+            provider.assert_called_once()
+            with self.assertRaises(CommerceError):
+                self.shop.download(self.session, job)
+        self.webhook(identifier)
+        self.shop.claim(self.session, job, "Faltan campos en el formulario")
+        self.shop.refund(self.shop.claims()[0]["id"])
+        self.now += 30
+        with patch.object(self.shop, "http", side_effect=CommerceError("Provider timeout", 503, "provider_unavailable")) as provider:
+            self.assertEqual(self.shop.refresh(self.session, job)["state"], "refunded")
+            provider.assert_not_called()
 
     def test_refund_tracks_the_order_that_granted_access_after_retry(self):
         job, first = self.paid_order()
@@ -362,8 +423,9 @@ class CommerceTests(unittest.TestCase):
         self.assertEqual(len(self.provider.emails), 2)
         self.assertEqual(self.shop.verify(token)["jobId"], job)
         self.now += 61
-        new_job = self.job()
-        self.shop.request_email(self.session, new_job, "other@example.com")
+        fresh_session = self.shop.ensure_session(None)
+        new_job = self.job(session=fresh_session)
+        self.shop.request_email(fresh_session, new_job, "other@example.com")
         expired = re.search(r"token=([A-Za-z0-9_-]+)", self.provider.emails[-1]["text"])[1]
         self.now += 901
         with self.assertRaises(CommerceError) as error:
