@@ -227,6 +227,18 @@ class HostedWebTest(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 create_app(mode="web", commerce_service=self.shop)
 
+    def test_metrics_count_a_work_once_after_retries_and_note_corrections(self):
+        meta = self.job()
+        self.prepare(meta)
+        self.prepare(meta)
+        changed = [{**meta["fields"][0], "name": "Nombre corregido"}, *meta["fields"][1:]]
+        self.prepare(meta, changed)
+        self.prepare(meta, changed)
+        counts = self.shop.metrics()["counts"]
+        self.assertEqual(counts["prepared"], 1)
+        self.assertEqual(counts["preview_ready"], 1)
+        self.assertEqual(counts["corrected"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
