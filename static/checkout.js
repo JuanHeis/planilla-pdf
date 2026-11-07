@@ -8,7 +8,7 @@ window.PlanillaCheckout = (() => {
     "download-email", "download-email-button", "download-free", "download-pay", "download-file",
     "download-retry", "download-claim-form", "download-claim-reason", "download-claim-button",
     "download-contact", "download-success", "download-close", "download-edit",
-    "download-test-notice", "recovery-test-notice",
+    "download-test-notice", "recovery-test-notice", "download-test-mailbox", "recovery-test-mailbox",
     "recovery-dialog", "recovery-form", "recovery-email", "recovery-status", "recovery-send",
     "recovery-jobs", "recovery-job-list", "recovery-other",
   ].map((id) => [id, element(id)]));
@@ -72,6 +72,7 @@ window.PlanillaCheckout = (() => {
       ["payment_rejected", "expired", "refunded"].includes(state) ? "warning" : "info");
     nodes["download-detail"].textContent = "";
     nodes["download-email-form"].hidden = !emailReady() || !["needs_email", "email_pending"].includes(state);
+    nodes["download-test-mailbox"].hidden = !testMail() || !["needs_email", "email_pending"].includes(state);
     nodes["download-free"].hidden = state !== "free_available";
     const resumePayment = state === "payment_pending" && Boolean(status.checkoutUrl);
     nodes["download-pay"].hidden = config.paymentsConfigured !== true || (!["payment_required", "payment_rejected"].includes(state) && !resumePayment);
@@ -194,7 +195,7 @@ window.PlanillaCheckout = (() => {
     downloaded = false;
     nodes["download-success"].hidden = true;
     nodes["download-email"].value = "";
-    for (const id of ["download-email-form", "download-free", "download-pay", "download-file", "download-price", "download-retry", "download-claim-form"]) nodes[id].hidden = true;
+    for (const id of ["download-email-form", "download-test-mailbox", "download-free", "download-pay", "download-file", "download-price", "download-retry", "download-claim-form"]) nodes[id].hidden = true;
     nodes["download-title"].textContent = "Preparando tu descarga";
     nodes["download-detail"].textContent = "Estamos comprobando que el PDF se pueda abrir y completar. Todavía no se consumió tu descarga gratis.";
     message("Preparando y comprobando el PDF…");
@@ -351,6 +352,8 @@ window.PlanillaCheckout = (() => {
     config = value;
     nodes["download-test-notice"].hidden = !testMode();
     nodes["recovery-test-notice"].hidden = !testMail();
+    nodes["download-test-mailbox"].hidden = !testMail() || !["needs_email", "email_pending"].includes(current?.state);
+    nodes["recovery-test-mailbox"].hidden = !testMail();
     nodes["recovery-send"].textContent = testMail() ? "Generar enlace de recuperación de prueba" : "Enviar enlace de recuperación";
   }, open, refresh, openRecovery };
 })();

@@ -59,6 +59,8 @@ async function checkoutChecks() {
   await ui.window.PlanillaCheckout.open(pdf, false);
   assert.equal(ui.nodes["download-email-form"].hidden, false, "The test sink enables the confirmation form");
   assert.equal(ui.nodes["download-test-notice"].hidden, false);
+  assert.equal(ui.nodes["download-test-mailbox"].hidden, false);
+  assert.equal(ui.nodes["recovery-test-mailbox"].hidden, false);
   assert.match(ui.nodes["download-detail"].textContent, /no llegará a tu casilla/);
   assert.equal(ui.nodes["download-title"].textContent, "Último paso para descargar");
   for (const next of ["email_pending", "payment_required", "payment_pending", "payment_rejected", "expired", "refunded"]) {
@@ -66,6 +68,7 @@ async function checkoutChecks() {
     await ui.window.PlanillaCheckout.open(pdf, false);
     assert.doesNotMatch(ui.nodes["download-detail"].textContent, /Correo no deseado|cargo en tu cuenta|acreditación depende/);
     assert.equal(ui.nodes["download-file"].hidden, true, "Pending or unsuccessful tests never offer a file");
+    assert.equal(ui.nodes["download-test-mailbox"].hidden, next !== "email_pending", "The mailbox link is limited to the email step");
     if (next === "email_pending") assert.match(ui.nodes["download-status"].textContent, /Enlace de prueba generado/);
     if (next === "payment_required") assert.match(ui.nodes["download-pay"].textContent, /Probar pago/);
     if (titles[next]) assert.equal(ui.nodes["download-title"].textContent, titles[next]);
@@ -78,6 +81,8 @@ async function checkoutChecks() {
   state = "email_pending";
   await ui.window.PlanillaCheckout.open(pdf, false);
   assert.equal(ui.nodes["download-test-notice"].hidden, true);
+  assert.equal(ui.nodes["download-test-mailbox"].hidden, true);
+  assert.equal(ui.nodes["recovery-test-mailbox"].hidden, true);
   assert.match(ui.nodes["download-detail"].textContent, /Correo no deseado/);
   for (const [next, title] of Object.entries(titles)) {
     state = next;
@@ -85,6 +90,8 @@ async function checkoutChecks() {
     assert.equal(ui.nodes["download-title"].textContent, title, "The heading states the actual result in production too");
     assert.equal(ui.nodes["download-file"].hidden, true);
   }
+  ui.window.PlanillaCheckout.configure({ ...config, testMode: false, testEmailEnabled: true });
+  assert.equal(ui.nodes["recovery-test-mailbox"].hidden, true, "A lone test-email flag cannot expose the test navigation");
 }
 
 async function freeReadyChecks() {
